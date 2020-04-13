@@ -1,45 +1,3 @@
-# gomodbump
-
-Ensures your Go modules are using the latest minor and patch versions of your dependencies.
-
-## Description
-
-Go module bump will ensure your Go module repositories are using the latest dependencies.
-
-This is how it works...
-
-1. Gets repositories from storage (If file exists)
-2. Gets repositories from the SCM server
-3. Merges any existing pull requests for a repository that is mergeable
-4. If `stateful` or `auto_merge` is `true` and a pull request is already open for the repository it will not be processed any further
-5. Clones repositories to local disk
-6. If a repository is not a Go module it will not be processed any further
-7. Bumps any updatable dependency versions that are allowed or not blocked. By default all dependencies are allowed. If `go_mod_tidy` is `true` that will be run after updating
-8. Pushes updates to the `go.mod` and `go.sum` files to SCM server for each repository
-9. Creates pull requests for all pushed repositories in the SCM server
-10. Saves the state to specified storage backend
-
-**NOTE: It is recommended to setup a special user in your SCM just for updating Go modules so you can setup specific rules for that user to ignore running CI on commits VS pull requests**
-
-## Supported SCM
-
-- bitbucket server
-
-## Supported VCS
-
-- git
-
-## Supported Storage
-
-- local file system
-
-## TODO
-
-- Implement pull request strategy
-
-## Configuraton
-
-```yaml
 general:
   cleanup: false                                   # Enabling this will prevent the work_dir from being cleaned up after running
   workers: 4                                       # Number of concurrent Go routines to process the repositories with
@@ -82,8 +40,3 @@ bump:
 storage:
   file:
     filename: gomodbump.json                       # Saves the state to the file specified here
-```
-
-## License
-
-**MIT**
