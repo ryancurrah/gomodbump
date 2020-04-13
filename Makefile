@@ -29,6 +29,7 @@ release:
 	bumpversion --current-version $(shell cat VERSION) minor VERSION
 	git add VERSION
 	git commit -m "Released version $(shell cat VERSION)"
+	git tag $(shell cat VERSION)
 	git push --tags
 	goreleaser --rm-dist
 
