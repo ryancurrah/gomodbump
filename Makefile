@@ -26,7 +26,9 @@ dockerrun: dockerbuild
 
 .PHONEY: release
 release:
-	bumpversion --tag --current-version $(shell cat VERSION) minor VERSION
+	bumpversion --current-version $(shell cat VERSION) minor VERSION
+	git add VERSION
+	git commit -m "Released version $(shell cat VERSION)"
 	git push --tags
 	goreleaser --rm-dist
 
