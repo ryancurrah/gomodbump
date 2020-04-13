@@ -2,13 +2,6 @@ ARG GO_VERSION=1.14.2
 ARG ALPINE_VERSION=3.11
 ARG GOMODBUMP_VERSION=
 
-# ---- Build container
-FROM golang:${GO_VERSION}-alpine${ALPINE_VERSION} AS builder
-WORKDIR /gomodbump
-COPY . .
-RUN apk add --no-cache git
-RUN go build -o gomodbump cmd/gomodbump/main.go
-
 # ---- App container
 FROM golang:${GO_VERSION}-alpine${ALPINE_VERSION}
 ENV BITBUCKET_SERVER_USERNAME=
@@ -17,5 +10,5 @@ ENV GIT_USERNAME=
 ENV GIT_PASSWORD=
 WORKDIR /
 RUN apk --no-cache add ca-certificates
-COPY --from=builder gomodbump/gomodbump /
+COPY gomodbump /gomodbump
 ENTRYPOINT ./gomodbump

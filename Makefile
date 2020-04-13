@@ -15,8 +15,8 @@ build:
 
 .PHONEY: dockerbuild
 dockerbuild:
-	docker build --arg GOMODBUMP_VERSION=${version} . --tag ryancurrah/gomodbump:latest
-
+	docker build --build-arg GOMODBUMP_VERSION=${version} --tag ryancurrah/gomodbump:${version} .
+ 
 .PHONEY: run
 run: build
 	GIT_USERNAME=admin GIT_PASSWORD=admin BITBUCKET_SERVER_USERNAME=admin BITBUCKET_SERVER_PASSWORD=admin ./gomodbump
@@ -29,11 +29,11 @@ dockerrun: dockerbuild
 release:
 	git tag ${version}
 	git push --tags
-	goreleaser --rm-dist
+	goreleaser --skip-validate --rm-dist
 
 .PHONEY: clean
 clean:
-	rm -rf repos/
+	rm -rf repos/ dist/
 	rm -f gomodbump.json gomodbump
 
 .PHONEY: install-tools-mac

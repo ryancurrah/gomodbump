@@ -4,9 +4,13 @@ Ensures your Go modules are using the latest minor and patch versions of your de
 
 ## Description
 
-Go module bump will ensure your Go module repositories are using the latest dependencies.
+Go module bump will ensure your Go module repositories are using the latest dependencies. This is useful for organzations where they want to ensure their internal dependencies are always up to date.
 
-This is how it works...
+## How It Works
+
+Schedule `gomodbump` to run every `X` amount time in your favorite scheduler.
+
+**NOTE:** It is recommended to setup a special user in your SCM just for updating Go modules so you can setup specific rules for ignoring that user when they push commits and only run CI on pull requests.
 
 1. Gets repositories from storage (If file exists)
 2. Gets repositories from the SCM server
@@ -19,23 +23,25 @@ This is how it works...
 9. Creates pull requests for all pushed repositories in the SCM server
 10. Saves the state to specified storage backend
 
-**NOTE: It is recommended to setup a special user in your SCM just for updating Go modules so you can setup specific rules for that user to ignore running CI on commits VS pull requests**
-
 ## Supported SCM
 
-- bitbucket server
+- [Bitbucket server](https://www.atlassian.com/software/bitbucket)
 
 ## Supported VCS
 
-- git
+- [Git](https://git-scm.com/)
 
 ## Supported Storage
 
-- local file system
+Storage is used to save the repository state, it contains the pull request infomration to use for the next execution.
+
+- Local file
 
 ## TODO
 
-- Implement pull request strategy
+- [ ] Implement batched pull request strategy
+- [ ] Support S3 storage
+- [ ] Support Github SCM
 
 ## Configuraton
 
@@ -82,6 +88,33 @@ bump:
 storage:
   file:
     filename: gomodbump.json                       # Saves the state to the file specified here
+```
+
+## Example
+
+Running the binary:
+
+```
+GIT_USERNAME=admin GIT_PASSWORD=admin BITBUCKET_SERVER_USERNAME=admin BITBUCKET_SERVER_PASSWORD=admin ./gomodbump
+```
+
+Running the Docker image:
+
+```
+docker run \
+  -e GIT_USERNAME=admin \
+  -e GIT_PASSWORD=admin \
+  -e BITBUCKET_SERVER_USERNAME=admin \
+  -e BITBUCKET_SERVER_PASSWORD=admin \
+  -v "$(pwd)/.gomodbump.yaml:/.gomodbump.yaml" \
+  -v "gomodbumpVolume:/storage"
+  ryancurrah/gomodbump:latest
+```
+
+## Install
+
+```
+go get -u github.com/ryancurrah/gomodbump/cmd/gomodbump
 ```
 
 ## License
