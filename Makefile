@@ -1,4 +1,5 @@
 current_dir = $(shell pwd)
+version = $(shell printf '%s' $$(cat VERSION))
 
 .PHONEY: start-bitbucket-server
 start-bitbucket-server:
@@ -14,7 +15,7 @@ build:
 
 .PHONEY: dockerbuild
 dockerbuild:
-	docker build --arg GOMODBUMP_VERSION=$$(cat VERSION) . --tag ryancurrah/gomodbump:latest
+	docker build --arg GOMODBUMP_VERSION=${version} . --tag ryancurrah/gomodbump:latest
 
 .PHONEY: run
 run: build
@@ -26,7 +27,7 @@ dockerrun: dockerbuild
 
 .PHONEY: release
 release:
-	git tag $$(cat VERSION)
+	git tag ${version}
 	git push --tags
 	goreleaser --rm-dist
 
