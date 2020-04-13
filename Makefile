@@ -14,7 +14,7 @@ build:
 
 .PHONEY: dockerbuild
 dockerbuild:
-	docker build --arg GOMODBUMP_VERSION=$(shell cat VERSION) . --tag ryancurrah/gomodbump:latest
+	docker build --arg GOMODBUMP_VERSION=$$(cat VERSION) . --tag ryancurrah/gomodbump:latest
 
 .PHONEY: run
 run: build
@@ -26,10 +26,7 @@ dockerrun: dockerbuild
 
 .PHONEY: release
 release:
-	bumpversion --current-version $(shell cat VERSION) minor VERSION
-	git add VERSION
-	git commit -m "Released version $(shell cat VERSION)"
-	git tag $(shell cat VERSION)
+	git tag $$(cat VERSION)
 	git push --tags
 	goreleaser --rm-dist
 
