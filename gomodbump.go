@@ -37,9 +37,10 @@ type storageManager interface {
 
 // GeneralConfig are general settings for this package
 type GeneralConfig struct {
-	Cleanup bool   `yaml:"cleanup"`
-	Workers int    `yaml:"workers"`
-	WorkDir string `yaml:"work_dir"`
+	Cleanup  bool   `yaml:"cleanup"`
+	Workers  int    `yaml:"workers"`
+	WorkDir  string `yaml:"work_dir"`
+	Stateful bool   `yaml:"stateful"`
 }
 
 // SourceCodeManagementConfig used to create pull requests and get repos
@@ -138,9 +139,8 @@ func (b *GoModBump) Run() error {
 		defer b.clean()
 	}
 
-	// Only save repos to storage where a PR was created and Auto Merge is set to true
-	// In order to support auto merge we need to save repo state
-	if b.conf.SCM.PullRequest.AutoMerge {
+	// Only save repos to storage where a PR was created and Stateful or Auto Merge is set to true
+	if b.conf.General.Stateful || b.conf.SCM.PullRequest.AutoMerge {
 		err = b.storageManager.Save(repos.GetSavable())
 		if err != nil {
 			return err

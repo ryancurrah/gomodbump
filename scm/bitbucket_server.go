@@ -183,7 +183,33 @@ func getBitbucketServerCloneURL(cloneType string, cloneLinks []bitbucketv1.Clone
 
 func (b *BitbucketServer) mergePullRequest(repos <-chan *repository.Repository, done chan<- bool) {
 	for repo := range repos {
-		response, err := b.client.DefaultApi.CanMerge(repo.Parent, repo.Name, repo.PullRequestID)
+		response, err := b.client.DefaultApi.GetPullRequest(repo.Parent, repo.Name, int(repo.PullRequestID))
+		if err != nil {
+			log.Printf("unable to merge pull request #%d for repo '%s': %s", repo.PullRequestID, repo.Name, err)
+
+			done <- true
+
+			continue
+		}
+
+		pullRequest, err := bitbucketv1.GetPullRequestResponse(response)
+		if err != nil {
+			log.Printf("unable to merge pull request #%d for repo '%s': %s", repo.PullRequestID, repo.Name, err)
+
+			done <- true
+
+			continue
+		}
+
+		if !pullRequest.Open {
+			repo.ResetState()
+
+			done <- true
+
+			continue
+		}
+
+		response, err = b.client.DefaultApi.CanMerge(repo.Parent, repo.Name, repo.PullRequestID)
 		if err != nil {
 			log.Printf("unable to get pull request #%d 'can merge' status for repo '%s': %s", repo.PullRequestID, repo.Name, err)
 
@@ -209,26 +235,6 @@ func (b *BitbucketServer) mergePullRequest(repos <-chan *repository.Repository, 
 
 			continue
 		}
-
-		response, err = b.client.DefaultApi.GetPullRequest(repo.Parent, repo.Name, int(repo.PullRequestID))
-		if err != nil {
-			log.Printf("unable to merge pull request #%d for repo '%s': %s", repo.PullRequestID, repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		pullRequest, err := bitbucketv1.GetPullRequestResponse(response)
-		if err != nil {
-			log.Printf("unable to merge pull request #%d for repo '%s': %s", repo.PullRequestID, repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		fmt.Printf("%+v\n\n", pullRequest)
 
 		mergeMap := make(map[string]interface{})
 		mergeMap["version"] = pullRequest.Version
