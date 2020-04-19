@@ -18,7 +18,6 @@ type PullRequestConfig struct {
 	Title       string              `yaml:"title"`
 	Description string              `yaml:"description"`
 	Strategy    PullRequestStrategy `yaml:"strategy"`
-	BatchSize   int64               `yaml:"batch_size"`
 	BatchDelay  time.Duration       `yaml:"batch_delay"`
 	AutoMerge   bool                `yaml:"auto_merge"`
 }

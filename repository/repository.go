@@ -105,6 +105,7 @@ type Repositories []*Repository
 // GetMergeable repositories, repositories where a PR was created
 func (r Repositories) GetMergeable(scm SCM) Repositories {
 	mergeableRepos := make(Repositories, 0, len(r))
+
 	for n := range r {
 		if r[n].SCM == scm && r[n].PullRequestOpened && r[n].PullRequestID != 0 {
 			mergeableRepos = append(mergeableRepos, r[n])
@@ -117,6 +118,7 @@ func (r Repositories) GetMergeable(scm SCM) Repositories {
 // GetCloneable repositories
 func (r Repositories) GetCloneable(vcs VCS) Repositories {
 	cloneableRepos := make(Repositories, 0, len(r))
+
 	for n := range r {
 		if r[n].VCS == vcs && !r[n].PullRequestOpened && !r[n].Cloned {
 			cloneableRepos = append(cloneableRepos, r[n])
@@ -129,6 +131,7 @@ func (r Repositories) GetCloneable(vcs VCS) Repositories {
 // GetBumpable repositories
 func (r Repositories) GetBumpable() Repositories {
 	bumpableRepos := make(Repositories, 0, len(r))
+
 	for n := range r {
 		if !r[n].PullRequestOpened && !r[n].Bumped && r[n].Cloned {
 			bumpableRepos = append(bumpableRepos, r[n])
@@ -141,6 +144,7 @@ func (r Repositories) GetBumpable() Repositories {
 // GetPushable repositories
 func (r Repositories) GetPushable(vcs VCS) Repositories {
 	pushableRepos := make(Repositories, 0, len(r))
+
 	for n := range r {
 		if r[n].VCS == vcs && !r[n].PullRequestOpened && !r[n].Pushed && r[n].Bumped {
 			pushableRepos = append(pushableRepos, r[n])
@@ -153,6 +157,7 @@ func (r Repositories) GetPushable(vcs VCS) Repositories {
 // GetPRable repositories
 func (r Repositories) GetPRable(scm SCM) Repositories {
 	prAbleRepos := make(Repositories, 0, len(r))
+
 	for n := range r {
 		if r[n].SCM == scm && !r[n].PullRequestOpened && r[n].Pushed {
 			prAbleRepos = append(prAbleRepos, r[n])
@@ -165,6 +170,7 @@ func (r Repositories) GetPRable(scm SCM) Repositories {
 // GetSavable repositories, repositories where a PR was created
 func (r Repositories) GetSavable() Repositories {
 	savableRepos := make(Repositories, 0, len(r))
+
 	for n := range r {
 		if r[n].PullRequestOpened && r[n].PullRequestID != 0 {
 			savableRepos = append(savableRepos, r[n])

@@ -25,10 +25,15 @@ func main() {
 
 	config.SCM.BitbucketServer.Username = os.Getenv("BITBUCKET_SERVER_USERNAME")
 	config.SCM.BitbucketServer.Password = os.Getenv("BITBUCKET_SERVER_PASSWORD")
+	config.SCM.BitbucketServer.Token = os.Getenv("BITBUCKET_SERVER_TOKEN")
 	config.VCS.Git.Username = os.Getenv("GIT_USERNAME")
 	config.VCS.Git.Password = os.Getenv("GIT_PASSWORD")
+	config.VCS.Git.Token = os.Getenv("GIT_TOKEN")
 
-	bumper := gomodbump.NewGoModBump(*config)
+	bumper, err := gomodbump.NewGoModBump(*config)
+	if err != nil {
+		log.Fatalf("running gomodbump failed: %s", err)
+	}
 
 	err = bumper.Run()
 	if err != nil {

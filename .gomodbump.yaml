@@ -1,30 +1,37 @@
 general:
   cleanup: false                                   # Enabling this will prevent the work_dir from being cleaned up after running
-  workers: 4                                       # Number of concurrent Go routines to process the repositories with
+  workers: 5                                       # Number of concurrent Go routines to process the repositories with
   work_dir: repos/                                 # Directory to clone the repositories to
   stateful: true                                   # Ensures you do not create more than 1 pull request for each repo. Requires storage to be configured
+  clone_type: ssh                                  # http or ssh
 
 scm:
   pull_request:
     title: Updating go.mod dependencies
     description: Updating go.mod dependencies
     strategy: batch                                # Enabling the batch strategy will ensure we do not overwhelm CI by slowly updating modules (Not implemented yet)
-    batch_size: 1                                  # Number of pull requests to open at a time
     batch_delay: 1m                                # Delay in seconds, minutes, hours between pull request batches
     auto_merge: true                               # Will automatically merge the pull request if it is mergeable. This enables stateful
 
   bitbucket_server:
     # BITBUCKET_SERVER_USERNAME env var required
     # BITBUCKET_SERVER_PASSWORD env var required
+    # OR
+    # BITBUCKET_TOKEN env var required
     url: http://127.0.0.1:7990/rest                # URL of the bitbucket server, must have /rest appended
+    insecure: false                                # Disable SSL verification for self-signed certs or internal CAs
     project_key: GO                                # Bitbucket project key to scan for repositories
-    clone_type: http                               # Only http clone type support at the moment, later ssh may be supported
 
 vcs:
   git:
-    # GIT_USERNAME env var required
-    # GIT_PASSWORD env var required
-    source_branch: updating-go-modules             # Name of the source branch to create the current datetime is always appended
+    # GIT_USERNAME env var required for basic auth
+    # GIT_PASSWORD env var required for basic auth
+    # OR
+    # GIT_TOKEN env var required for token auth
+    # OR
+    # If clone_type ssh is specified will use ssh-agent. Ensure a host key is in your known hosts file or else enable insecure
+    insecure: false                                # Disable SSL verification for self-signed certs or internal CAs OR disables host key checking for SSH
+    source_branch: updating-go-modules             # Name of the source branch to create the current date time is always appended
     target_branch: master                          # Name of the target branch to create the branch from and pull request against
     commit_message: Updating go.mod dependencies
     commit_author_name: FirstName LastName
@@ -39,4 +46,13 @@ bump:
 
 storage:
   file:
+    filename: gomodbump.json                       # Saves the state to the file specified here
+
+  s3:
+    # AWS_ACCESS_KEY_ID env var required
+    # AWS_SECRET_ACCESS_KEY env var required
+    # OR
+    # ~/.aws/credentials
+    region: "us-east-1"                            # Region to use for the S3 client
+    bucketname: "gomodbump"                        # Name of the S3 bucket to get and put the state file
     filename: gomodbump.json                       # Saves the state to the file specified here

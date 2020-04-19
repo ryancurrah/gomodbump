@@ -17,9 +17,17 @@ build:
 dockerbuild:
 	docker build --build-arg GOMODBUMP_VERSION=${version} --tag ryancurrah/gomodbump:${version} .
  
-.PHONEY: run
-run: build
+.PHONEY: run-basicauth
+run-basicauth: build
 	GIT_USERNAME=admin GIT_PASSWORD=admin BITBUCKET_SERVER_USERNAME=admin BITBUCKET_SERVER_PASSWORD=admin ./gomodbump
+
+.PHONEY: run-tokenauth
+run-tokenauth: build
+	GIT_TOKEN="OTEzNDY5MDAyMjE4OthQjKPe0x2+PKEOex2f/sd1o53K" BITBUCKET_SERVER_TOKEN="OTEzNDY5MDAyMjE4OthQjKPe0x2+PKEOex2f/sd1o53K" ./gomodbump
+
+.PHONEY: run-sshauth
+run-sshauth: build
+	BITBUCKET_SERVER_TOKEN="OTEzNDY5MDAyMjE4OthQjKPe0x2+PKEOex2f/sd1o53K" ./gomodbump
 
 .PHONEY: dockerrun
 dockerrun: dockerbuild

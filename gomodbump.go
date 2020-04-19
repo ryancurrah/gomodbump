@@ -37,10 +37,11 @@ type storageManager interface {
 
 // GeneralConfig are general settings for this package
 type GeneralConfig struct {
-	Cleanup  bool   `yaml:"cleanup"`
-	Workers  int    `yaml:"workers"`
-	WorkDir  string `yaml:"work_dir"`
-	Stateful bool   `yaml:"stateful"`
+	Workers   int    `yaml:"workers"`
+	WorkDir   string `yaml:"work_dir"`
+	CloneType string `yaml:"clone_type"`
+	Stateful  bool   `yaml:"stateful"`
+	Cleanup   bool   `yaml:"cleanup"`
 }
 
 // SourceCodeManagementConfig used to create pull requests and get repos
@@ -54,14 +55,10 @@ type VersionControlSystemConfig struct {
 	Git vcs.GitConfig `yaml:"git"`
 }
 
-// FileStorageConfig configuration of file storage
-type FileStorageConfig struct {
-	Filename string `yam:"filename"`
-}
-
 // StorageConfig allow different file storage backends
 type StorageConfig struct {
-	File FileStorageConfig `yam:"file"`
+	File storage.FileStorageConfig `yaml:"file"`
+	S3   storage.S3StorageConfig   `yaml:"s3"`
 }
 
 // Configuration for Go mod bump
@@ -88,16 +85,32 @@ type GoModBump struct {
 }
 
 // NewGoModBump initializes a Go Mod Bump struct
-func NewGoModBump(conf Configuration) GoModBump {
-	return GoModBump{
-		conf:       conf,
-		scmManager: scm.NewBitbucketServer(conf.SCM.PullRequest, conf.SCM.BitbucketServer),
-		vcsManager: vcs.NewGit(conf.VCS.Git),
-		bumper:     bump.NewBumper(conf.Bump),
-		storageManager: &storage.FileStorage{
-			Filename: conf.Storage.File.Filename,
-		},
+func NewGoModBump(conf Configuration) (*GoModBump, error) {
+	vcsManager, err := vcs.NewGit(conf.VCS.Git, conf.General.CloneType)
+	if err != nil {
+		return nil, err
 	}
+
+	var storageManager storageManager
+
+	if conf.Storage.S3 != (storage.S3StorageConfig{}) {
+		var errStorage error
+
+		storageManager, errStorage = storage.NewS3Storage(conf.Storage.S3)
+		if errStorage != nil {
+			return nil, errStorage
+		}
+	} else {
+		storageManager = storage.NewFileStorage(conf.Storage.File)
+	}
+
+	return &GoModBump{
+		conf:           conf,
+		scmManager:     scm.NewBitbucketServer(conf.SCM.PullRequest, conf.SCM.BitbucketServer, conf.General.CloneType),
+		vcsManager:     vcsManager,
+		bumper:         bump.NewBumper(conf.Bump),
+		storageManager: storageManager,
+	}, nil
 }
 
 // Run Go Mod Bump
@@ -105,7 +118,7 @@ func (b *GoModBump) Run() error {
 	// Cleanup working directory before running
 	b.clean()
 
-	// Get the repos from the last the run, this contains PR infor
+	// Get the repos from the last the run, this contains PR info
 	reposFromStorage, err := b.storageManager.Load()
 	if err != nil {
 		return err

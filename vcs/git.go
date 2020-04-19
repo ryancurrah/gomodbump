@@ -1,15 +1,22 @@
 package vcs
 
 import (
+	"crypto/tls"
 	"fmt"
 	"log"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/plumbing/transport/client"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
+	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 	"github.com/ryancurrah/gomodbump/repository"
+	"golang.org/x/crypto/ssh"
 )
 
 var (
@@ -24,18 +31,57 @@ type GitConfig struct {
 	CommitMessage     string `yaml:"commit_message"`
 	CommitAuthorName  string `yaml:"commit_author_name"`
 	CommitAuthorEmail string `yaml:"commit_author_email"`
+	Insecure          bool   `yaml:"insecure"`
 	Username          string `yaml:"-"`
 	Password          string `yaml:"-"`
+	Token             string `yaml:"-"`
 }
 
 // Git is a version control system supported by gomodbump
 type Git struct {
 	conf GitConfig
+	auth transport.AuthMethod
 }
 
 // NewGit initializes a new VCS manager
-func NewGit(conf GitConfig) *Git {
-	return &Git{conf: conf}
+func NewGit(conf GitConfig, authType string) (*Git, error) {
+	switch authType {
+	case "ssh":
+		auth, err := gitssh.NewSSHAgentAuth("git")
+		if err != nil {
+			return nil, err
+		}
+
+		if conf.Insecure {
+			auth.HostKeyCallback = ssh.InsecureIgnoreHostKey() // nolint: gosec
+		}
+
+		return &Git{
+			conf: conf,
+			auth: auth,
+		}, nil
+	default:
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: conf.Insecure}, // nolint: gosec
+			},
+		}
+
+		client.InstallProtocol("https", githttp.NewClient(httpClient))
+
+		if strings.TrimSpace(conf.Token) != "" {
+			conf.Username = "git"
+			conf.Password = conf.Token
+		}
+
+		return &Git{
+			conf: conf,
+			auth: &githttp.BasicAuth{
+				Username: conf.Username,
+				Password: conf.Password,
+			},
+		}, nil
+	}
 }
 
 // GetSourceBranch returns the source branch to use for creating changes
@@ -106,10 +152,7 @@ func (g *Git) clone(repos <-chan *repository.Repository, done chan<- bool) {
 		cloneOpts := git.CloneOptions{
 			URL:          repo.URL,
 			SingleBranch: true,
-			Auth: &http.BasicAuth{
-				Username: g.conf.Username,
-				Password: g.conf.Password,
-			},
+			Auth:         g.auth,
 		}
 
 		gitRepo, err := git.PlainClone(repo.ClonePath(), false, &cloneOpts)
@@ -202,10 +245,7 @@ func (g *Git) push(repos <-chan *repository.Repository, done chan<- bool) {
 		}
 
 		err = repo.GitRepo.Push(&git.PushOptions{
-			Auth: &http.BasicAuth{
-				Username: g.conf.Username,
-				Password: g.conf.Password,
-			},
+			Auth: g.auth,
 		})
 		if err != nil {
 			log.Printf("unable to push '%s' skipping it: %s", repo.Name, err)

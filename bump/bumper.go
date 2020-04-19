@@ -65,11 +65,37 @@ func (c Configuration) IsModuleAllowed(module string) bool {
 // Bumper bumps all Go modules based on the settings provided
 type Bumper struct {
 	conf Configuration
+	envs []string
 }
 
-// NewBumper initizlises a new bumper
+// NewBumper initialises a new bumper
 func NewBumper(conf Configuration) *Bumper {
-	return &Bumper{conf: conf}
+	envs := make([]string, 0, 4) // nolint: mnd
+
+	if os.Getenv("GOPROXY") != "" {
+		envs = append(envs, fmt.Sprintf("GOPROXY=%s", os.Getenv("GOPROXY")))
+	}
+
+	if os.Getenv("GOPRIVATE") != "" {
+		envs = append(envs, fmt.Sprintf("GOPRIVATE=%s", os.Getenv("GOPRIVATE")))
+	}
+
+	if os.Getenv("GOSUMDB") != "" {
+		envs = append(envs, fmt.Sprintf("GOSUMDB=%s", os.Getenv("GOSUMDB")))
+	}
+
+	if os.Getenv("GONOSUMDB") != "" {
+		envs = append(envs, fmt.Sprintf("GONOSUMDB=%s", os.Getenv("GONOSUMDB")))
+	}
+
+	if len(envs) > 0 {
+		log.Printf("go environment variable detected: %s", envs)
+	}
+
+	return &Bumper{
+		conf: conf,
+		envs: envs,
+	}
 }
 
 // Bump all the repositories Go module dependencies based on the configuration provided
@@ -103,7 +129,7 @@ func (b *Bumper) bump(repos <-chan *repository.Repository, done chan<- bool) {
 			continue
 		}
 
-		updates, err := getGoModuleUpdates(repo.ClonePath())
+		updates, err := getGoModuleUpdates(b.envs, repo.ClonePath())
 		if err != nil {
 			log.Printf("unable to bump '%s' skipping it: %s", repo.Name, err)
 
@@ -127,7 +153,7 @@ func (b *Bumper) bump(repos <-chan *repository.Repository, done chan<- bool) {
 		}
 
 		for n := range filteredUpdates {
-			err := updateGoModule(repo.ClonePath(), filteredUpdates[n].Module, b.conf.GoModTidy, *filteredUpdates[n].NewVersion)
+			err := updateGoModule(b.envs, repo.ClonePath(), filteredUpdates[n].Module, b.conf.GoModTidy, *filteredUpdates[n].NewVersion)
 			if err != nil {
 				log.Printf("unable to update module for '%s' skipping it: %s", repo.Name, err)
 				continue
@@ -163,11 +189,12 @@ func isGoModule(workingDir string) error {
 	return nil
 }
 
-func getGoModuleUpdates(workingDir string) (repository.Updates, error) {
+func getGoModuleUpdates(envs []string, workingDir string) (repository.Updates, error) {
 	template := "{{if (and (not (or .Main .Indirect)) .Update)}}{{.Path}}:{{.Version}}:{{.Update.Version}}{{end}}"
 
 	cmd := exec.Command("go", "list", "-u", "-f", template, "-m", "all")
 	cmd.Dir = workingDir
+	cmd.Env = envs
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -193,7 +220,7 @@ func getGoModuleUpdates(workingDir string) (repository.Updates, error) {
 	for n := range lines {
 		columns := strings.Split(lines[n], ":")
 
-		if len(columns) != 3 {
+		if len(columns) != 3 { // nolint: gomnd
 			continue
 		}
 
@@ -224,11 +251,12 @@ func getGoModuleUpdates(workingDir string) (repository.Updates, error) {
 	return updates, nil
 }
 
-func updateGoModule(workingDir, module string, goModTidy bool, version semver.Version) error {
+func updateGoModule(envs []string, workingDir, module string, goModTidy bool, version semver.Version) error {
 	moduleVersion := fmt.Sprintf("%s@v%s", module, version.String())
 
 	cmd := exec.Command("go", "get", moduleVersion)
 	cmd.Dir = workingDir
+	cmd.Env = envs
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -251,6 +279,7 @@ func updateGoModule(workingDir, module string, goModTidy bool, version semver.Ve
 
 	cmd = exec.Command("go", "mod", "tidy")
 	cmd.Dir = workingDir
+	cmd.Env = envs
 
 	stderr, err = cmd.StderrPipe()
 	if err != nil {

@@ -2,8 +2,10 @@ package scm
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
+	"net/http"
 	"strings"
 
 	bitbucketv1 "github.com/gfleury/go-bitbucket-v1"
@@ -14,10 +16,12 @@ import (
 // BitbucketServerConfig is the information required to interact with Bitbucket server
 type BitbucketServerConfig struct {
 	URL        string `yaml:"url"`
+	Insecure   bool   `yaml:"insecure"`
 	ProjectKey string `yaml:"project_key"`
 	CloneType  string `yaml:"clone_type"`
 	Username   string `yaml:"-"`
 	Password   string `yaml:"-"`
+	Token      string `yaml:"-"`
 }
 
 // BitbucketServer scm
@@ -29,18 +33,38 @@ type BitbucketServer struct {
 }
 
 // NewBitbucketServer initializes a new Bitbucket SCM manager
-func NewBitbucketServer(pullRequestConf PullRequestConfig, conf BitbucketServerConfig) *BitbucketServer {
-	bitbucketServer := BitbucketServer{
-		ctx: context.WithValue(
+func NewBitbucketServer(pullRequestConf PullRequestConfig, conf BitbucketServerConfig, cloneType string) *BitbucketServer {
+	var ctx context.Context
+	if strings.TrimSpace(conf.Token) == "" {
+		ctx = context.WithValue(
 			context.Background(),
 			bitbucketv1.ContextBasicAuth, bitbucketv1.BasicAuth{UserName: conf.Username, Password: conf.Password},
-		),
+		)
+	} else {
+		ctx = context.Background()
+	}
+
+	conf.CloneType = cloneType
+
+	bitbucketServer := BitbucketServer{
+		ctx:         ctx,
 		pullRequest: pullRequestConf,
 		conf:        conf,
 	}
+
 	bitbucketServer.client = bitbucketv1.NewAPIClient(
 		bitbucketServer.ctx,
-		bitbucketv1.NewConfiguration(conf.URL),
+		bitbucketv1.NewConfiguration(conf.URL, func(config *bitbucketv1.Configuration) {
+			if conf.Token != "" {
+				config.AddDefaultHeader("Authorization", fmt.Sprintf("Bearer %s", conf.Token))
+			}
+
+			config.HTTPClient = &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: conf.Insecure}, // nolint: gosec
+				},
+			}
+		}),
 	)
 
 	return &bitbucketServer
@@ -124,7 +148,7 @@ func (b *BitbucketServer) CreatePullRequest(workers int, repos repository.Reposi
 func (b *BitbucketServer) createPullRequest(repos <-chan *repository.Repository, done chan<- bool) {
 	for repo := range repos {
 		if repo.VCS != repository.Git {
-			log.Printf(vcsNotSupportedMsg(repo.VCS))
+			log.Print(vcsNotSupportedMsg(repo.VCS))
 		}
 
 		response, err := b.client.DefaultApi.CreatePullRequest(b.conf.ProjectKey, repo.Name, bitbucketv1.PullRequest{
@@ -219,7 +243,9 @@ func (b *BitbucketServer) mergePullRequest(repos <-chan *repository.Repository, 
 		}
 
 		var merge bitbucketv1.MergeGetResponse
+
 		err = mapstructure.Decode(response.Values, &merge)
+
 		if err != nil {
 			log.Printf("unable to get pull request #%d 'can merge' status for repo '%s': %s", repo.PullRequestID, repo.Name, err)
 
@@ -239,7 +265,7 @@ func (b *BitbucketServer) mergePullRequest(repos <-chan *repository.Repository, 
 		mergeMap := make(map[string]interface{})
 		mergeMap["version"] = pullRequest.Version
 
-		response, err = b.client.DefaultApi.Merge(repo.Parent, repo.Name, int(repo.PullRequestID), mergeMap, nil, []string{"application/json"})
+		_, err = b.client.DefaultApi.Merge(repo.Parent, repo.Name, int(repo.PullRequestID), mergeMap, nil, []string{"application/json"})
 		if err != nil {
 			log.Printf("unable to merge pull request #%d for repo '%s': %s", repo.PullRequestID, repo.Name, err)
 
