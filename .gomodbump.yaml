@@ -1,5 +1,5 @@
 general:
-  cleanup: false                                   # Enabling this will prevent the work_dir from being cleaned up after running
+  cleanup: true                                    # Enabling this will prevent the work_dir from being cleaned up after running
   workers: 5                                       # Number of concurrent Go routines to process the repositories with
   work_dir: repos/                                 # Directory to clone the repositories to
   stateful: true                                   # Ensures you do not create more than 1 pull request for each repo. Requires storage to be configured
