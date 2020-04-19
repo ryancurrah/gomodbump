@@ -1,6 +1,10 @@
 # gomodbump
 
+<img src="https://storage.googleapis.com/gopherizeme.appspot.com/gophers/68a9f253a5c70bd1fb39e8ac9c07cb2c434f5952.png" width="30%">
+
 Ensures your Go modules are using the latest minor and patch versions of your dependencies.
+
+Similar to https://dependabot.com/ or https://renovatebot.com/ but focused solely on Go.
 
 ## Description
 
@@ -9,8 +13,6 @@ Go module bump will ensure your Go module repositories are using the latest depe
 ## How It Works
 
 Schedule `gomodbump` to run every `X` amount time in your favorite scheduler.
-
-**NOTE:** It is recommended to setup a special user in your SCM just for updating Go modules so you can setup specific rules for ignoring that user when they push commits and only run CI on pull requests.
 
 1. Gets repositories from storage (If the file exists)
 2. Gets repositories from the SCM server
