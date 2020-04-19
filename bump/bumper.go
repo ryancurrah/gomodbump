@@ -65,37 +65,11 @@ func (c Configuration) IsModuleAllowed(module string) bool {
 // Bumper bumps all Go modules based on the settings provided
 type Bumper struct {
 	conf Configuration
-	envs []string
 }
 
 // NewBumper initialises a new bumper
 func NewBumper(conf Configuration) *Bumper {
-	envs := make([]string, 0, 4) // nolint: mnd
-
-	if os.Getenv("GOPROXY") != "" {
-		envs = append(envs, fmt.Sprintf("GOPROXY=%s", os.Getenv("GOPROXY")))
-	}
-
-	if os.Getenv("GOPRIVATE") != "" {
-		envs = append(envs, fmt.Sprintf("GOPRIVATE=%s", os.Getenv("GOPRIVATE")))
-	}
-
-	if os.Getenv("GOSUMDB") != "" {
-		envs = append(envs, fmt.Sprintf("GOSUMDB=%s", os.Getenv("GOSUMDB")))
-	}
-
-	if os.Getenv("GONOSUMDB") != "" {
-		envs = append(envs, fmt.Sprintf("GONOSUMDB=%s", os.Getenv("GONOSUMDB")))
-	}
-
-	if len(envs) > 0 {
-		log.Printf("go environment variable detected: %s", envs)
-	}
-
-	return &Bumper{
-		conf: conf,
-		envs: envs,
-	}
+	return &Bumper{conf: conf}
 }
 
 // Bump all the repositories Go module dependencies based on the configuration provided
@@ -129,7 +103,7 @@ func (b *Bumper) bump(repos <-chan *repository.Repository, done chan<- bool) {
 			continue
 		}
 
-		updates, err := getGoModuleUpdates(b.envs, repo.ClonePath())
+		updates, err := getGoModuleUpdates(repo.ClonePath())
 		if err != nil {
 			log.Printf("unable to bump '%s' skipping it: %s", repo.Name, err)
 
@@ -147,20 +121,39 @@ func (b *Bumper) bump(repos <-chan *repository.Repository, done chan<- bool) {
 		}
 
 		if len(filteredUpdates) == 0 {
+			log.Printf("repo %s has no updates, skipping", repo.Name)
+
 			done <- true
 
 			continue
 		}
 
+		log.Printf("repo %s has %d updates, running", repo.Name, len(filteredUpdates))
+
 		for n := range filteredUpdates {
-			err := updateGoModule(b.envs, repo.ClonePath(), filteredUpdates[n].Module, b.conf.GoModTidy, *filteredUpdates[n].NewVersion)
+			err := updateGoModule(repo.ClonePath(), filteredUpdates[n].Module, *filteredUpdates[n].NewVersion)
 			if err != nil {
-				log.Printf("unable to update module for '%s' skipping it: %s", repo.Name, err)
+				log.Printf("unable to update repo for %s skipping it: %s", repo.Name, err)
+
+				done <- true
+
 				continue
 			}
 		}
 
+		err = runGoModTidy(repo.ClonePath())
+		if err != nil {
+			log.Printf("failed to run go mod tidy for repo %s: %s", repo.Name, err)
+
+			done <- true
+
+			continue
+		}
+
+		log.Printf("bumped go.mod for repo %s", repo.Name)
+
 		repo.SetBumped(filteredUpdates)
+
 		done <- true
 	}
 }
@@ -189,12 +182,12 @@ func isGoModule(workingDir string) error {
 	return nil
 }
 
-func getGoModuleUpdates(envs []string, workingDir string) (repository.Updates, error) {
+func getGoModuleUpdates(workingDir string) (repository.Updates, error) {
 	template := "{{if (and (not (or .Main .Indirect)) .Update)}}{{.Path}}:{{.Version}}:{{.Update.Version}}{{end}}"
 
 	cmd := exec.Command("go", "list", "-u", "-f", template, "-m", "all")
 	cmd.Dir = workingDir
-	cmd.Env = envs
+	cmd.Env = append(os.Environ())
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -251,12 +244,12 @@ func getGoModuleUpdates(envs []string, workingDir string) (repository.Updates, e
 	return updates, nil
 }
 
-func updateGoModule(envs []string, workingDir, module string, goModTidy bool, version semver.Version) error {
+func updateGoModule(workingDir, module string, version semver.Version) error {
 	moduleVersion := fmt.Sprintf("%s@v%s", module, version.String())
 
 	cmd := exec.Command("go", "get", moduleVersion)
 	cmd.Dir = workingDir
-	cmd.Env = envs
+	cmd.Env = append(os.Environ())
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -264,7 +257,7 @@ func updateGoModule(envs []string, workingDir, module string, goModTidy bool, ve
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to update module '%s': %s", moduleVersion, err)
+		return fmt.Errorf("failed to update module '%s': %s", module, err)
 	}
 
 	errMsg, _ := ioutil.ReadAll(stderr)
@@ -273,27 +266,27 @@ func updateGoModule(envs []string, workingDir, module string, goModTidy bool, ve
 		return fmt.Errorf("failed to update module '%s': %s %s", module, strings.TrimSpace(string(errMsg)), err)
 	}
 
-	if !goModTidy {
-		return nil
-	}
+	return nil
+}
 
-	cmd = exec.Command("go", "mod", "tidy")
+func runGoModTidy(workingDir string) error {
+	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = workingDir
-	cmd.Env = envs
+	cmd.Env = append(os.Environ())
 
-	stderr, err = cmd.StderrPipe()
+	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to update module '%s': %s", moduleVersion, err)
+		return err
 	}
 
-	errMsg, _ = ioutil.ReadAll(stderr)
+	errMsg, _ := ioutil.ReadAll(stderr)
 
 	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("failed to update module '%s': %s %s", module, strings.TrimSpace(string(errMsg)), err)
+		return fmt.Errorf("%s: %s", strings.TrimSpace(string(errMsg)), err)
 	}
 
 	return nil

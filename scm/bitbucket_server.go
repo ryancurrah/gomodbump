@@ -77,6 +77,8 @@ func (b *BitbucketServer) SCMType() repository.SCM {
 
 // GetRepositories that belong to the project
 func (b *BitbucketServer) GetRepositories(vcsType repository.VCS) (repository.Repositories, error) {
+	log.Printf("getting repos for bitbucket-server project %s", b.conf.ProjectKey)
+
 	if vcsType != repository.Git {
 		return nil, fmt.Errorf(vcsNotSupportedMsg(vcsType))
 	}
@@ -151,6 +153,8 @@ func (b *BitbucketServer) createPullRequest(repos <-chan *repository.Repository,
 			log.Print(vcsNotSupportedMsg(repo.VCS))
 		}
 
+		log.Printf("creating pull request for repo %s and sleeping for %v", repo.Name, b.pullRequest.Delay)
+
 		response, err := b.client.DefaultApi.CreatePullRequest(b.conf.ProjectKey, repo.Name, bitbucketv1.PullRequest{
 			Title:       b.pullRequest.Title,
 			Description: b.pullRequest.Description,
@@ -191,6 +195,9 @@ func (b *BitbucketServer) createPullRequest(repos <-chan *repository.Repository,
 		}
 
 		repo.SetPullRequest(int64(pullRequest.ID))
+
+		b.pullRequest.Sleep()
+
 		done <- true
 	}
 }
@@ -274,7 +281,12 @@ func (b *BitbucketServer) mergePullRequest(repos <-chan *repository.Repository, 
 			continue
 		}
 
+		log.Printf("merged pull request for repo %s and sleeping for %v", repo.Name, b.pullRequest.Delay)
+
 		repo.ResetState()
+
+		b.pullRequest.Sleep()
+
 		done <- true
 	}
 }

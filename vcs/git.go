@@ -26,15 +26,21 @@ var (
 
 // GitConfig are the options to use for Git VCS
 type GitConfig struct {
-	SourceBranch      string `yaml:"source_branch"`
-	TargetBranch      string `yaml:"target_branch"`
-	CommitMessage     string `yaml:"commit_message"`
-	CommitAuthorName  string `yaml:"commit_author_name"`
-	CommitAuthorEmail string `yaml:"commit_author_email"`
-	Insecure          bool   `yaml:"insecure"`
-	Username          string `yaml:"-"`
-	Password          string `yaml:"-"`
-	Token             string `yaml:"-"`
+	SourceBranch      string        `yaml:"source_branch"`
+	TargetBranch      string        `yaml:"target_branch"`
+	CommitMessage     string        `yaml:"commit_message"`
+	CommitAuthorName  string        `yaml:"commit_author_name"`
+	CommitAuthorEmail string        `yaml:"commit_author_email"`
+	Insecure          bool          `yaml:"insecure"`
+	Delay             time.Duration `yaml:"delay"`
+	Username          string        `yaml:"-"`
+	Password          string        `yaml:"-"`
+	Token             string        `yaml:"-"`
+}
+
+// Sleep for the given Delay duration
+func (c GitConfig) Sleep() {
+	time.Sleep(c.Delay)
 }
 
 // Git is a version control system supported by gomodbump
@@ -70,8 +76,10 @@ func NewGit(conf GitConfig, authType string) (*Git, error) {
 		client.InstallProtocol("https", githttp.NewClient(httpClient))
 
 		if strings.TrimSpace(conf.Token) != "" {
-			conf.Username = "git"
-			conf.Password = conf.Token
+			return &Git{
+				conf: conf,
+				auth: &githttp.TokenAuth{Token: conf.Token},
+			}, nil
 		}
 
 		return &Git{
@@ -185,6 +193,8 @@ func (g *Git) clone(repos <-chan *repository.Repository, done chan<- bool) {
 			continue
 		}
 
+		log.Printf("cloned repo %s", repo.Name)
+
 		repo.SetCloned(gitRepo)
 
 		done <- true
@@ -193,14 +203,7 @@ func (g *Git) clone(repos <-chan *repository.Repository, done chan<- bool) {
 
 func (g *Git) push(repos <-chan *repository.Repository, done chan<- bool) {
 	for repo := range repos {
-		_, err := repo.GitRepo.Worktree()
-		if err != nil {
-			log.Printf("unable to git push '%s' skipping it: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
+		log.Printf("pushing repo %s", repo.Name)
 
 		worktree, err := repo.GitRepo.Worktree()
 		if err != nil {
@@ -255,7 +258,12 @@ func (g *Git) push(repos <-chan *repository.Repository, done chan<- bool) {
 			continue
 		}
 
+		log.Printf("pushed repo %s and sleeping for %v", repo.Name, g.conf.Delay)
+
 		repo.SetPushed()
+
+		g.conf.Sleep()
+
 		done <- true
 	}
 }
