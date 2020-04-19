@@ -71,7 +71,7 @@ scm:
   pull_request:
     title: Updating go.mod dependencies
     description: Updating go.mod dependencies
-    delay: 10s                                     # Delay in seconds or minutes or hours after creating a pull request in order to no overwhelm your CI
+    delay: 10s                                     # Delay in seconds or minutes or hours after creating a pull request in order to not overwhelm your CI
     auto_merge: true                               # Will automatically merge the pull request if it is mergeable. This enables stateful
 
   bitbucket_server:
@@ -97,7 +97,7 @@ vcs:
     commit_message: Updating go.mod dependencies
     commit_author_name: FirstName LastName
     commit_author_email: admin@admin.com
-    delay: 10s                                     # Delay in seconds or minutes or hours after pushing to the remote in order to no overwhelm your CI
+    delay: 10s                                     # Delay in seconds or minutes or hours after pushing to the remote in order to not overwhelm your CI
 
 bump:
   go_mod_tidy: true                                # Will run `go mod tidy` if set to true after updating a repository
