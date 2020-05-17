@@ -26,7 +26,7 @@ var (
 	goSumFilename = "go.sum"
 )
 
-// GitConfig are the options to use for Git VCS
+// GitConfig are the options to use for Git VCS.
 type GitConfig struct {
 	SourceBranch      string `yaml:"source_branch"`
 	TargetBranch      string `yaml:"target_branch"`
@@ -39,14 +39,14 @@ type GitConfig struct {
 	Token             string `yaml:"-"`
 }
 
-// Git is a version control system supported by gomodbump
+// Git is a version control system supported by gomodbump.
 type Git struct {
 	conf        GitConfig
 	auth        transport.AuthMethod
 	colorWriter ColorWriter
 }
 
-// NewGit initializes a new VCS manager
+// NewGit initializes a new VCS manager.
 func NewGit(conf GitConfig, authType string) (*Git, error) {
 	switch authType {
 	case "ssh":
@@ -90,17 +90,17 @@ func NewGit(conf GitConfig, authType string) (*Git, error) {
 	}
 }
 
-// GetSourceBranch returns the source branch to use for creating changes
+// GetSourceBranch returns the source branch to use for creating changes.
 func (g *Git) GetSourceBranch() string {
 	return fmt.Sprintf("%s-%s", g.conf.SourceBranch, time.Now().Format("20060102150405"))
 }
 
-// GetTargetBranch returns the branch the source branch was checked out from
+// GetTargetBranch returns the branch the source branch was checked out from.
 func (g *Git) GetTargetBranch() string {
 	return g.conf.TargetBranch
 }
 
-// VCSType returns the VCS type
+// VCSType returns the VCS type.
 func (g *Git) VCSType() repository.VCS {
 	return repository.Git
 }

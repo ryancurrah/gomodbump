@@ -13,7 +13,7 @@ import (
 	"github.com/ryancurrah/gomodbump/repository"
 )
 
-// BitbucketServerConfig is the information required to interact with Bitbucket server
+// BitbucketServerConfig is the information required to interact with Bitbucket server.
 type BitbucketServerConfig struct {
 	URL        string `yaml:"url"`
 	Insecure   bool   `yaml:"insecure"`
@@ -24,7 +24,7 @@ type BitbucketServerConfig struct {
 	Token      string `yaml:"-"`
 }
 
-// BitbucketServer scm
+// BitbucketServer scm.
 type BitbucketServer struct {
 	ctx         context.Context
 	conf        BitbucketServerConfig
@@ -32,7 +32,7 @@ type BitbucketServer struct {
 	client      *bitbucketv1.APIClient
 }
 
-// NewBitbucketServer initializes a new Bitbucket SCM manager
+// NewBitbucketServer initializes a new Bitbucket SCM manager.
 func NewBitbucketServer(pullRequestConf PullRequestConfig, conf BitbucketServerConfig, cloneType string) *BitbucketServer {
 	var ctx context.Context
 	if strings.TrimSpace(conf.Token) == "" {
@@ -70,12 +70,12 @@ func NewBitbucketServer(pullRequestConf PullRequestConfig, conf BitbucketServerC
 	return &bitbucketServer
 }
 
-// SCMType returns the SCM type
+// SCMType returns the SCM type.
 func (b *BitbucketServer) SCMType() repository.SCM {
 	return repository.BitbucketServer
 }
 
-// GetRepositories that belong to the project
+// GetRepositories that belong to the project.
 func (b *BitbucketServer) GetRepositories(vcsType repository.VCS) (repository.Repositories, error) {
 	log.Printf("getting repos for bitbucket-server project %s", b.conf.ProjectKey)
 
@@ -107,12 +107,12 @@ func (b *BitbucketServer) GetRepositories(vcsType repository.VCS) (repository.Re
 	return repos, nil
 }
 
-// CreatePullRequest against the repos provided using the strategy provided
+// CreatePullRequest against the repos provided using the strategy provided.
 func (b *BitbucketServer) CreatePullRequest(repo *repository.Repository) (int, error) {
 	return b.createPullRequest(repo)
 }
 
-// MergePullRequest merges all existing pull requests that can be merged
+// MergePullRequest merges all existing pull requests that can be merged.
 func (b *BitbucketServer) MergePullRequest(repo *repository.Repository) error {
 	return b.mergePullRequest(repo)
 }

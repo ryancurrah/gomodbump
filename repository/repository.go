@@ -7,29 +7,29 @@ import (
 	"github.com/go-git/go-git/v5"
 )
 
-// SCM is the kind of scm
+// SCM is the kind of scm.
 type SCM string
 
-// BitbucketServer is a scm type
+// BitbucketServer is a scm type.
 var BitbucketServer SCM = "bitbucketserver"
 
-// VCS is the kind of vcs
+// VCS is the kind of vcs.
 type VCS string
 
-// Git is a vcs type
+// Git is a vcs type.
 var Git VCS = "git"
 
-// Update is a module that can be updated
+// Update is a module that can be updated.
 type Update struct {
 	Module     string
 	OldVersion *semver.Version
 	NewVersion *semver.Version
 }
 
-// Updates is a list of modules that can be updated
+// Updates is a list of modules that can be updated.
 type Updates []*Update
 
-// Repository is a VCS repository
+// Repository is a VCS repository.
 type Repository struct {
 	Name              string
 	URL               string
@@ -48,30 +48,30 @@ type Repository struct {
 	PullRequestID     int64
 }
 
-// SetCloned repository state
+// SetCloned repository state.
 func (r *Repository) SetCloned(gitRepo *git.Repository) {
 	r.Cloned = true
 	r.GitRepo = gitRepo
 }
 
-// SetBumped repository state
+// SetBumped repository state.
 func (r *Repository) SetBumped(updates Updates) {
 	r.Bumped = true
 	r.Updates = updates
 }
 
-// SetPushed repository state
+// SetPushed repository state.
 func (r *Repository) SetPushed() {
 	r.Pushed = true
 }
 
-// SetPullRequest repository state
+// SetPullRequest repository state.
 func (r *Repository) SetPullRequest(id int64) {
 	r.PullRequestOpened = true
 	r.PullRequestID = id
 }
 
-// ClonePath returns the string path to clone to
+// ClonePath returns the string path to clone to.
 func (r *Repository) ClonePath() string {
 	return filepath.Join(r.BaseDir, string(r.SCM), r.Parent, r.Name)
 }
@@ -106,7 +106,7 @@ func (r *Repository) IsSavable() bool {
 	return r.PullRequestOpened && r.PullRequestID != 0
 }
 
-// ResetState resets the repository state to default
+// ResetState resets the repository state to default.
 func (r *Repository) ResetState() {
 	r.Cloned = false
 	r.Bumped = false
@@ -118,7 +118,7 @@ func (r *Repository) ResetState() {
 	r.PullRequestID = 0
 }
 
-// NewRepository returns an initialized repository
+// NewRepository returns an initialized repository.
 func NewRepository(name, url, parent string, scm SCM, vcs VCS) *Repository {
 	return &Repository{
 		Name:   name,
@@ -129,10 +129,10 @@ func NewRepository(name, url, parent string, scm SCM, vcs VCS) *Repository {
 	}
 }
 
-// Repositories a list of VCS repositories
+// Repositories a list of VCS repositories.
 type Repositories []*Repository
 
-// GetSavable repositories, repositories where a PR was created
+// GetSavable repositories, repositories where a PR was created.
 func (r Repositories) GetSavable() Repositories {
 	savableRepos := make(Repositories, 0, len(r))
 

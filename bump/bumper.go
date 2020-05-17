@@ -19,7 +19,7 @@ var (
 	goSumFilename = "go.sum"
 )
 
-// Configuration to use when bumping module versions
+// Configuration to use when bumping module versions.
 type Configuration struct {
 	GoModTidy      bool     `yaml:"go_mod_tidy"`
 	AllowedModules []string `yaml:"allowed_modules"`
@@ -28,7 +28,7 @@ type Configuration struct {
 	BlockedDomains []string `yaml:"blocked_domains"`
 }
 
-// IsModuleAllowed returns true if the module is allowed to be updated
+// IsModuleAllowed returns true if the module is allowed to be updated.
 func (c Configuration) IsModuleAllowed(module string) bool {
 	for _, allowedModule := range c.AllowedModules {
 		if allowedModule == module {
@@ -62,17 +62,17 @@ func (c Configuration) IsModuleAllowed(module string) bool {
 	return true
 }
 
-// Bumper bumps all Go modules based on the settings provided
+// Bumper bumps all Go modules based on the settings provided.
 type Bumper struct {
 	conf Configuration
 }
 
-// NewBumper initializes a new bumper
+// NewBumper initializes a new bumper.
 func NewBumper(conf Configuration) *Bumper {
 	return &Bumper{conf: conf}
 }
 
-// Bump all the repositories Go module dependencies based on the configuration provided
+// Bump all the repositories Go module dependencies based on the configuration provided.
 func (b *Bumper) Bump(repo *repository.Repository) (repository.Updates, error) {
 	return b.bump(repo)
 }
@@ -153,8 +153,10 @@ func getGoModuleUpdates(workingDir string) (repository.Updates, error) {
 	template := "{{if (and (not (or .Main .Indirect)) .Update)}}{{.Path}}:{{.Version}}:{{.Update.Version}}{{end}}"
 
 	cmd := exec.Command("go", "list", "-u", "-f", template, "-m", "all")
+
 	cmd.Dir = workingDir
-	cmd.Env = append(os.Environ())
+
+	cmd.Env = os.Environ()
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -215,8 +217,10 @@ func updateGoModule(workingDir, module string, version semver.Version) error {
 	moduleVersion := fmt.Sprintf("%s@v%s", module, version.String())
 
 	cmd := exec.Command("go", "get", moduleVersion)
+
 	cmd.Dir = workingDir
-	cmd.Env = append(os.Environ())
+
+	cmd.Env = os.Environ()
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
@@ -238,8 +242,10 @@ func updateGoModule(workingDir, module string, version semver.Version) error {
 
 func runGoModTidy(workingDir string) error {
 	cmd := exec.Command("go", "mod", "tidy")
+
 	cmd.Dir = workingDir
-	cmd.Env = append(os.Environ())
+
+	cmd.Env = os.Environ()
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {

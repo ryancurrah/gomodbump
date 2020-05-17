@@ -42,7 +42,7 @@ type storageManager interface {
 	Load() (repository.Repositories, error)
 }
 
-// GeneralConfig are general settings for this package
+// GeneralConfig are general settings for this package.
 type GeneralConfig struct {
 	Workers   int           `yaml:"workers"`
 	WorkDir   string        `yaml:"work_dir"`
@@ -52,24 +52,24 @@ type GeneralConfig struct {
 	Delay     time.Duration `yaml:"delay"`
 }
 
-// SourceCodeManagementConfig used to create pull requests and get repos
+// SourceCodeManagementConfig used to create pull requests and get repos.
 type SourceCodeManagementConfig struct {
 	PullRequest     scm.PullRequestConfig     `yaml:"pull_request"`
 	BitbucketServer scm.BitbucketServerConfig `yaml:"bitbucket_server"`
 }
 
-// VersionControlSystemConfig used to work with the repos
+// VersionControlSystemConfig used to work with the repos.
 type VersionControlSystemConfig struct {
 	Git vcs.GitConfig `yaml:"git"`
 }
 
-// StorageConfig allow different file storage backends
+// StorageConfig allow different file storage backends.
 type StorageConfig struct {
 	File storage.FileStorageConfig `yaml:"file"`
 	S3   storage.S3StorageConfig   `yaml:"s3"`
 }
 
-// Configuration for Go mod bump
+// Configuration for Go mod bump.
 type Configuration struct {
 	General GeneralConfig              `yaml:"general"`
 	SCM     SourceCodeManagementConfig `yaml:"scm"`
@@ -78,12 +78,12 @@ type Configuration struct {
 	Storage StorageConfig              `yaml:"storage"`
 }
 
-// GetWorkDir returns the working dir path cleaned
+// GetWorkDir returns the working dir path cleaned.
 func (c Configuration) GetWorkDir() string {
 	return filepath.Clean(c.General.WorkDir)
 }
 
-// GoModBump does the bumping of versions
+// GoModBump does the bumping of versions.
 type GoModBump struct {
 	conf           Configuration
 	scmManager     scmManager
@@ -92,7 +92,7 @@ type GoModBump struct {
 	storageManager storageManager
 }
 
-// NewGoModBump initializes a Go Mod Bump struct
+// NewGoModBump initializes a Go Mod Bump struct.
 func NewGoModBump(conf Configuration) (*GoModBump, error) {
 	vcsManager, err := vcs.NewGit(conf.VCS.Git, conf.General.CloneType)
 	if err != nil {
@@ -122,7 +122,7 @@ func NewGoModBump(conf Configuration) (*GoModBump, error) {
 }
 
 // Run Go Mod Bump.
-func (b *GoModBump) Run() error {
+func (b *GoModBump) Run() error { // nolint:gocognit
 	ctx := context.Background()
 
 	// Cleanup working directory before running.
@@ -146,6 +146,7 @@ func (b *GoModBump) Run() error {
 	sem := semaphore.NewWeighted(int64(b.conf.General.Workers))
 
 	group, ctx := errgroup.WithContext(ctx)
+
 	for n := range repos {
 		repo := repos[n]
 
@@ -199,7 +200,7 @@ func (b *GoModBump) Run() error {
 				repo.SetBumped(updates)
 			}
 
-			// Push repos to remote, includes commiting.
+			// Push repos to remote, includes committing.
 			if repo.IsPushable(b.vcsManager.VCSType()) {
 				err = b.vcsManager.Push(repo)
 				if err != nil {

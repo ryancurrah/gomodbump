@@ -9,17 +9,17 @@ import (
 	"github.com/ryancurrah/gomodbump/repository"
 )
 
-// FileStorageConfig configuration of file storage
+// FileStorageConfig configuration of file storage.
 type FileStorageConfig struct {
 	Filename string `yam:"filename"`
 }
 
-// FileStorage backend
+// FileStorage backend.
 type FileStorage struct {
 	conf FileStorageConfig
 }
 
-// NewFileStorage initializes a new file storage backend
+// NewFileStorage initializes a new file storage backend.
 func NewFileStorage(conf FileStorageConfig) *FileStorage {
 	if conf.Filename == "" {
 		conf.Filename = defaultFilename
@@ -28,7 +28,7 @@ func NewFileStorage(conf FileStorageConfig) *FileStorage {
 	return &FileStorage{conf: conf}
 }
 
-// Save gomodbump repos to storage
+// Save gomodbump repos to storage.
 func (s *FileStorage) Save(repos repository.Repositories) error {
 	file, err := json.MarshalIndent(repos, "", "    ")
 	if err != nil {
@@ -43,7 +43,7 @@ func (s *FileStorage) Save(repos repository.Repositories) error {
 	return nil
 }
 
-// Load gomodbump repos from storage
+// Load gomodbump repos from storage.
 func (s *FileStorage) Load() (repository.Repositories, error) {
 	if !fileExists(s.conf.Filename) {
 		return repository.Repositories{}, nil

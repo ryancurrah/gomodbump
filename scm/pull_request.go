@@ -5,13 +5,13 @@ package scm
 type PullRequestStrategy string
 
 var (
-	// None strategy will create all pull requests at the sametime and is the default
+	// None strategy will create all pull requests at the sametime and is the default.
 	None PullRequestStrategy = "none"
-	// Batch strategy will create pull requests in batches
+	// Batch strategy will create pull requests in batches.
 	Batch PullRequestStrategy = "batch"
 )
 
-// PullRequestConfig are the options to use for creating pull requests
+// PullRequestConfig are the options to use for creating pull requests.
 type PullRequestConfig struct {
 	Title       string `yaml:"title"`
 	Description string `yaml:"description"`

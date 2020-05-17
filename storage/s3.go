@@ -13,20 +13,20 @@ import (
 	"github.com/ryancurrah/gomodbump/repository"
 )
 
-// S3StorageConfig configuration of AWS S3 file storage
+// S3StorageConfig configuration of AWS S3 file storage.
 type S3StorageConfig struct {
 	Region     string `yaml:"region"`
 	Bucketname string `yaml:"bucketname"`
 	Filename   string `yam:"filename"`
 }
 
-// S3Storage backend
+// S3Storage backend.
 type S3Storage struct {
 	conf   S3StorageConfig
 	client *s3.S3
 }
 
-// NewS3Storage initializes a new S3 storage backend
+// NewS3Storage initializes a new S3 storage backend.
 func NewS3Storage(conf S3StorageConfig) (*S3Storage, error) {
 	if conf.Filename == "" {
 		conf.Filename = defaultFilename
@@ -43,7 +43,7 @@ func NewS3Storage(conf S3StorageConfig) (*S3Storage, error) {
 	}, nil
 }
 
-// Save gomodbump repos to storage
+// Save gomodbump repos to storage.
 func (s *S3Storage) Save(repos repository.Repositories) error {
 	file, err := json.MarshalIndent(repos, "", "    ")
 	if err != nil {
@@ -68,7 +68,7 @@ func (s *S3Storage) Save(repos repository.Repositories) error {
 	return nil
 }
 
-// Load gomodbump repos from storage
+// Load gomodbump repos from storage.
 func (s *S3Storage) Load() (repository.Repositories, error) {
 	repos := repository.Repositories{}
 
