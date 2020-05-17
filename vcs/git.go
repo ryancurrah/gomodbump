@@ -9,12 +9,14 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/client"
 	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
 	gitssh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	"github.com/gookit/color"
 	"github.com/ryancurrah/gomodbump/repository"
 	"golang.org/x/crypto/ssh"
 )
@@ -26,27 +28,22 @@ var (
 
 // GitConfig are the options to use for Git VCS
 type GitConfig struct {
-	SourceBranch      string        `yaml:"source_branch"`
-	TargetBranch      string        `yaml:"target_branch"`
-	CommitMessage     string        `yaml:"commit_message"`
-	CommitAuthorName  string        `yaml:"commit_author_name"`
-	CommitAuthorEmail string        `yaml:"commit_author_email"`
-	Insecure          bool          `yaml:"insecure"`
-	Delay             time.Duration `yaml:"delay"`
-	Username          string        `yaml:"-"`
-	Password          string        `yaml:"-"`
-	Token             string        `yaml:"-"`
-}
-
-// Sleep for the given Delay duration
-func (c GitConfig) Sleep() {
-	time.Sleep(c.Delay)
+	SourceBranch      string `yaml:"source_branch"`
+	TargetBranch      string `yaml:"target_branch"`
+	CommitMessage     string `yaml:"commit_message"`
+	CommitAuthorName  string `yaml:"commit_author_name"`
+	CommitAuthorEmail string `yaml:"commit_author_email"`
+	Insecure          bool   `yaml:"insecure"`
+	Username          string `yaml:"-"`
+	Password          string `yaml:"-"`
+	Token             string `yaml:"-"`
 }
 
 // Git is a version control system supported by gomodbump
 type Git struct {
-	conf GitConfig
-	auth transport.AuthMethod
+	conf        GitConfig
+	auth        transport.AuthMethod
+	colorWriter ColorWriter
 }
 
 // NewGit initializes a new VCS manager
@@ -88,6 +85,7 @@ func NewGit(conf GitConfig, authType string) (*Git, error) {
 				Username: conf.Username,
 				Password: conf.Password,
 			},
+			colorWriter: ColorWriter{Color: color.LightBlue},
 		}, nil
 	}
 }
@@ -107,163 +105,142 @@ func (g *Git) VCSType() repository.VCS {
 	return repository.Git
 }
 
-// Clone all the repos provided and return the ones that successfully cloned
-func (g *Git) Clone(workers int, repos repository.Repositories) {
-	reposToClone := make(chan *repository.Repository, len(repos))
-	done := make(chan bool, len(repos))
-
-	for worker := 1; worker <= workers; worker++ {
-		go g.clone(reposToClone, done)
-	}
-
-	for n := range repos {
-		reposToClone <- repos[n]
-	}
-
-	close(reposToClone)
-
-	for range repos {
-		<-done
-	}
+// Clone all the repos provided and return the ones that successfully cloned.
+func (g *Git) Clone(repo *repository.Repository) (*git.Repository, error) {
+	return g.clone(repo)
 }
 
-// Push changed files
-func (g *Git) Push(workers int, repos repository.Repositories) {
-	reposToPush := make(chan *repository.Repository, len(repos))
-	done := make(chan bool, len(repos))
-
-	for worker := 1; worker <= workers; worker++ {
-		go g.push(reposToPush, done)
-	}
-
-	for n := range repos {
-		reposToPush <- repos[n]
-	}
-
-	close(reposToPush)
-
-	for range repos {
-		<-done
-	}
+// Push changed files.
+func (g *Git) Push(repo *repository.Repository) error {
+	return g.push(repo)
 }
 
-func (g *Git) clone(repos <-chan *repository.Repository, done chan<- bool) {
-	for repo := range repos {
-		if repo.SourceBranch == "" {
-			repo.SourceBranch = g.GetSourceBranch()
-		}
-
-		if repo.TargetBranch == "" {
-			repo.TargetBranch = g.GetTargetBranch()
-		}
-
-		cloneOpts := git.CloneOptions{
-			URL:          repo.URL,
-			SingleBranch: true,
-			Auth:         g.auth,
-		}
-
-		gitRepo, err := git.PlainClone(repo.ClonePath(), false, &cloneOpts)
-		if err != nil {
-			log.Printf("unable to git clone '%s' skipping it: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		worktree, err := gitRepo.Worktree()
-		if err != nil {
-			log.Printf("unable to git clone '%s' skipping it: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		err = worktree.Checkout(&git.CheckoutOptions{
-			Branch: plumbing.NewBranchReferenceName(repo.SourceBranch),
-			Create: true,
-		})
-		if err != nil {
-			log.Printf("unable to git clone '%s' skipping it: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		log.Printf("cloned repo %s", repo.Name)
-
-		repo.SetCloned(gitRepo)
-
-		done <- true
-	}
+// DeleteBranch from remote.
+func (g *Git) DeleteBranch(repo *repository.Repository) error {
+	return g.deleteBranch(repo)
 }
 
-func (g *Git) push(repos <-chan *repository.Repository, done chan<- bool) {
-	for repo := range repos {
-		log.Printf("pushing repo %s", repo.Name)
-
-		worktree, err := repo.GitRepo.Worktree()
-		if err != nil {
-			log.Printf("unable to push '%s' skipping it: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		_, err = worktree.Add(goModFilename)
-		if err != nil {
-			log.Printf("unable to push '%s' skipping it: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		_, err = worktree.Add(goSumFilename)
-		if err != nil {
-			log.Printf("unable to push '%s' skipping it: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		_, err = worktree.Commit(g.conf.CommitMessage, &git.CommitOptions{
-			Author: &object.Signature{
-				Name:  g.conf.CommitAuthorName,
-				Email: g.conf.CommitAuthorEmail,
-				When:  time.Now(),
-			},
-		})
-		if err != nil {
-			log.Printf("unable to push '%s' skipping it: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		err = repo.GitRepo.Push(&git.PushOptions{
-			Auth: g.auth,
-		})
-		if err != nil {
-			log.Printf("unable to push '%s' skipping it: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		log.Printf("pushed repo %s and sleeping for %v", repo.Name, g.conf.Delay)
-
-		repo.SetPushed()
-
-		g.conf.Sleep()
-
-		done <- true
+func (g *Git) clone(repo *repository.Repository) (*git.Repository, error) {
+	if repo.SourceBranch == "" {
+		repo.SourceBranch = g.GetSourceBranch()
 	}
+
+	if repo.TargetBranch == "" {
+		repo.TargetBranch = g.GetTargetBranch()
+	}
+
+	cloneOpts := git.CloneOptions{
+		URL:          repo.URL,
+		SingleBranch: true,
+		Auth:         g.auth,
+		Progress:     g.colorWriter,
+	}
+
+	gitRepo, err := git.PlainClone(repo.ClonePath(), false, &cloneOpts)
+	if err != nil {
+		return nil, fmt.Errorf("repo '%s': unable to git clone, skipping: %s", repo.Name, err)
+	}
+
+	worktree, err := gitRepo.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("repo '%s': unable to git clone, skipping: %s", repo.Name, err)
+	}
+
+	err = worktree.Checkout(&git.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName(repo.SourceBranch),
+		Create: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("repo '%s': unable to git clone, skipping: %s", repo.Name, err)
+	}
+
+	log.Printf("repo '%s': was cloned successfully", repo.Name)
+
+	return gitRepo, nil
+}
+
+func (g *Git) push(repo *repository.Repository) error {
+	log.Printf("repo '%s': pushing commits to remote", repo.Name)
+
+	worktree, err := repo.GitRepo.Worktree()
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to push, skipping: %s", repo.Name, err)
+	}
+
+	_, err = worktree.Add(goModFilename)
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to push, skipping: %s", repo.Name, err)
+	}
+
+	_, err = worktree.Add(goSumFilename)
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to push, skipping: %s", repo.Name, err)
+	}
+
+	_, err = worktree.Commit(g.conf.CommitMessage, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  g.conf.CommitAuthorName,
+			Email: g.conf.CommitAuthorEmail,
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to push, skipping: %s", repo.Name, err)
+	}
+
+	err = repo.GitRepo.Push(&git.PushOptions{Auth: g.auth, Progress: g.colorWriter})
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to push, skipping: %s", repo.Name, err)
+	}
+
+	return nil
+}
+
+func (g *Git) deleteBranch(repo *repository.Repository) error {
+	var branchExistsInRemote bool
+
+	remote, err := repo.GitRepo.Remote("origin")
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to delete branch %s: %w", repo.Name, repo.SourceBranch, err)
+	}
+
+	remoteRefs, err := remote.List(&git.ListOptions{Auth: g.auth})
+	if err != nil {
+		return fmt.Errorf("repo '%s': fetching unable to delete branch %s: %w", repo.Name, repo.SourceBranch, err)
+	}
+
+	for n := range remoteRefs {
+		remoteBranchName := remoteRefs[n].Name().Short()
+
+		if remoteBranchName == repo.SourceBranch {
+			branchExistsInRemote = true
+		}
+	}
+
+	if !branchExistsInRemote {
+		return nil
+	}
+
+	err = repo.GitRepo.Push(&git.PushOptions{
+		Auth:     g.auth,
+		RefSpecs: []config.RefSpec{config.RefSpec(fmt.Sprintf(":refs/heads/%s", repo.SourceBranch))},
+		Progress: g.colorWriter,
+	})
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to delete branch %s: %w", repo.Name, repo.SourceBranch, err)
+	}
+
+	log.Printf("repo '%s': branch %s cleaned up successfully", repo.Name, repo.SourceBranch)
+
+	return nil
+}
+
+// ColorWriter writes output to stdout using the chosen color.
+type ColorWriter struct {
+	Color color.Color
+}
+
+func (c ColorWriter) Write(p []byte) (int, error) {
+	c.Color.Print(string(p))
+	return len(p), nil
 }

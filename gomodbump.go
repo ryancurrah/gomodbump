@@ -1,33 +1,40 @@
 package gomodbump
 
 import (
+	"context"
+	"log"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/ryancurrah/gomodbump/bump"
 	"github.com/ryancurrah/gomodbump/repository"
 	"github.com/ryancurrah/gomodbump/scm"
 	"github.com/ryancurrah/gomodbump/storage"
 	"github.com/ryancurrah/gomodbump/vcs"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 )
 
 type scmManager interface {
 	SCMType() repository.SCM
 	GetRepositories(vcsType repository.VCS) (repository.Repositories, error)
-	MergePullRequest(workers int, repos repository.Repositories)
-	CreatePullRequest(workers int, repos repository.Repositories)
+	MergePullRequest(repo *repository.Repository) error
+	CreatePullRequest(repo *repository.Repository) (int, error)
 }
 
 type vcsManager interface {
 	GetSourceBranch() string
 	GetTargetBranch() string
 	VCSType() repository.VCS
-	Clone(workers int, repos repository.Repositories)
-	Push(workers int, repos repository.Repositories)
+	Clone(repo *repository.Repository) (*git.Repository, error)
+	Push(repo *repository.Repository) error
+	DeleteBranch(repo *repository.Repository) error
 }
 
 type bumper interface {
-	Bump(workers int, repos repository.Repositories)
+	Bump(repo *repository.Repository) (repository.Updates, error)
 }
 
 type storageManager interface {
@@ -37,11 +44,12 @@ type storageManager interface {
 
 // GeneralConfig are general settings for this package
 type GeneralConfig struct {
-	Workers   int    `yaml:"workers"`
-	WorkDir   string `yaml:"work_dir"`
-	CloneType string `yaml:"clone_type"`
-	Stateful  bool   `yaml:"stateful"`
-	Cleanup   bool   `yaml:"cleanup"`
+	Workers   int           `yaml:"workers"`
+	WorkDir   string        `yaml:"work_dir"`
+	CloneType string        `yaml:"clone_type"`
+	Stateful  bool          `yaml:"stateful"`
+	Cleanup   bool          `yaml:"cleanup"`
+	Delay     time.Duration `yaml:"delay"`
 }
 
 // SourceCodeManagementConfig used to create pull requests and get repos
@@ -113,46 +121,123 @@ func NewGoModBump(conf Configuration) (*GoModBump, error) {
 	}, nil
 }
 
-// Run Go Mod Bump
+// Run Go Mod Bump.
 func (b *GoModBump) Run() error {
-	// Cleanup working directory before running
+	ctx := context.Background()
+
+	// Cleanup working directory before running.
 	b.clean()
 
-	// Get the repos from the last the run, this contains PR info
+	// Get the repos from the last the run, this contains PR info.
 	reposFromStorage, err := b.storageManager.Load()
 	if err != nil {
 		return err
 	}
 
-	// Get current repos from SCM
+	// Get current repos from SCM.
 	reposFromSCM, err := b.scmManager.GetRepositories(b.vcsManager.VCSType())
 	if err != nil {
 		return err
 	}
 
-	// Converge the repos from storage into the repos from SCM
+	// Converge the repos from storage into the repos from SCM.
 	repos := converge(b.conf.GetWorkDir(), reposFromStorage, reposFromSCM)
 
-	// If any of the repos have a pull request open and they are mergeable, merge them (If auto_merge=true)
-	b.scmManager.MergePullRequest(b.conf.General.Workers, repos.GetMergeable(b.scmManager.SCMType()))
+	sem := semaphore.NewWeighted(int64(b.conf.General.Workers))
 
-	// Clone repos locally that are cloneable
-	b.vcsManager.Clone(b.conf.General.Workers, repos.GetCloneable(b.vcsManager.VCSType()))
+	group, ctx := errgroup.WithContext(ctx)
+	for n := range repos {
+		repo := repos[n]
 
-	// Bump repos Go modules locally that are bumpable
-	b.bumper.Bump(b.conf.General.Workers, repos.GetBumpable())
+		group.Go(func() error {
+			err := sem.Acquire(ctx, 1)
+			if err != nil {
+				return err
+			}
+			defer sem.Release(1)
 
-	// Push repos locally that are pushable
-	b.vcsManager.Push(b.conf.General.Workers, repos.GetPushable(b.vcsManager.VCSType()))
+			// Clone repos locally.
+			if repo.IsCloneable(b.vcsManager.VCSType()) {
+				vcsRepoClient, err := b.vcsManager.Clone(repo)
+				if err != nil {
+					return err
+				}
 
-	// Create pull requests for repos where they are PRable
-	b.scmManager.CreatePullRequest(b.conf.General.Workers, repos.GetPRable(b.scmManager.SCMType()))
+				repo.SetCloned(vcsRepoClient)
+			}
+
+			// If any of the repos have a pull request open and they are mergeable, merge them (If auto_merge=true).
+			if repo.IsMergeable(b.scmManager.SCMType()) {
+				err = b.scmManager.MergePullRequest(repo)
+				if err != nil {
+					return err
+				}
+
+				err = b.vcsManager.DeleteBranch(repo)
+				if err != nil {
+					return err
+				}
+
+				repo.ResetState()
+
+				log.Printf("repo '%s': merged pull request and sleeping for %v", repo.Name, b.conf.General.Delay)
+
+				b.sleep()
+			}
+
+			// Find and update Go module dependencies.
+			if repo.IsBumpable() {
+				updates, err := b.bumper.Bump(repo)
+				if err != nil {
+					return err
+				}
+
+				if updates == nil {
+					return nil
+				}
+
+				repo.SetBumped(updates)
+			}
+
+			// Push repos to remote, includes commiting.
+			if repo.IsPushable(b.vcsManager.VCSType()) {
+				err = b.vcsManager.Push(repo)
+				if err != nil {
+					return err
+				}
+
+				repo.SetPushed()
+
+				log.Printf("repo '%s': pushed and sleeping for %v", repo.Name, b.conf.General.Delay)
+
+				b.sleep()
+			}
+
+			// Create pull requests for repos where they are PRable.
+			if repo.IsPRable(b.scmManager.SCMType()) {
+				pullRequestID, err := b.scmManager.CreatePullRequest(repo)
+				if err != nil {
+					return err
+				}
+
+				repo.SetPullRequest(int64(pullRequestID))
+
+				log.Printf("repo '%s': created pull request and sleeping for %v", repo.Name, b.conf.General.Delay)
+
+				b.sleep()
+			}
+
+			return nil
+		})
+	}
+
+	errWait := group.Wait()
 
 	if b.conf.General.Cleanup {
 		defer b.clean()
 	}
 
-	// Only save repos to storage where a PR was created and Stateful or Auto Merge is set to true
+	// Only save repos to storage where a PR was created and Stateful or Auto Merge is set to true.
 	if b.conf.General.Stateful || b.conf.SCM.PullRequest.AutoMerge {
 		err = b.storageManager.Save(repos.GetSavable())
 		if err != nil {
@@ -160,7 +245,11 @@ func (b *GoModBump) Run() error {
 		}
 	}
 
-	return nil
+	return errWait
+}
+
+func (b *GoModBump) sleep() {
+	time.Sleep(b.conf.General.Delay)
 }
 
 func (b *GoModBump) clean() {

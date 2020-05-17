@@ -67,95 +67,62 @@ type Bumper struct {
 	conf Configuration
 }
 
-// NewBumper initialises a new bumper
+// NewBumper initializes a new bumper
 func NewBumper(conf Configuration) *Bumper {
 	return &Bumper{conf: conf}
 }
 
 // Bump all the repositories Go module dependencies based on the configuration provided
-func (b *Bumper) Bump(workers int, repos repository.Repositories) {
-	reposToBump := make(chan *repository.Repository, len(repos))
-	done := make(chan bool, len(repos))
-
-	for worker := 1; worker <= workers; worker++ {
-		go b.bump(reposToBump, done)
-	}
-
-	for n := range repos {
-		reposToBump <- repos[n]
-	}
-
-	close(reposToBump)
-
-	for range repos {
-		<-done
-	}
+func (b *Bumper) Bump(repo *repository.Repository) (repository.Updates, error) {
+	return b.bump(repo)
 }
 
-func (b *Bumper) bump(repos <-chan *repository.Repository, done chan<- bool) {
-	for repo := range repos {
-		err := isGoModule(repo.ClonePath())
-		if err != nil {
-			log.Printf("unable to bump '%s' skipping it: %s", repo.Name, err)
+func (b *Bumper) bump(repo *repository.Repository) (repository.Updates, error) {
+	err := isGoModule(repo.ClonePath())
+	if err != nil {
+		log.Printf("repo '%s': has no go.mod file, skipping: %s", repo.Name, err)
 
-			done <- true
-
-			continue
-		}
-
-		updates, err := getGoModuleUpdates(repo.ClonePath())
-		if err != nil {
-			log.Printf("unable to bump '%s' skipping it: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		filteredUpdates := make(repository.Updates, 0, len(updates))
-
-		for n := range updates {
-			if b.conf.IsModuleAllowed(updates[n].Module) {
-				filteredUpdates = append(filteredUpdates, updates[n])
-			}
-		}
-
-		if len(filteredUpdates) == 0 {
-			log.Printf("repo %s has no updates, skipping", repo.Name)
-
-			done <- true
-
-			continue
-		}
-
-		log.Printf("repo %s has %d updates, running", repo.Name, len(filteredUpdates))
-
-		for n := range filteredUpdates {
-			err := updateGoModule(repo.ClonePath(), filteredUpdates[n].Module, *filteredUpdates[n].NewVersion)
-			if err != nil {
-				log.Printf("unable to update repo for %s skipping it: %s", repo.Name, err)
-
-				done <- true
-
-				continue
-			}
-		}
-
-		err = runGoModTidy(repo.ClonePath())
-		if err != nil {
-			log.Printf("failed to run go mod tidy for repo %s: %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		log.Printf("bumped go.mod for repo %s", repo.Name)
-
-		repo.SetBumped(filteredUpdates)
-
-		done <- true
+		return nil, nil
 	}
+
+	updates, err := getGoModuleUpdates(repo.ClonePath())
+	if err != nil {
+		return nil, fmt.Errorf("repo '%s': failed to get list of module updates, skipping: %s", repo.Name, err)
+	}
+
+	filteredUpdates := make(repository.Updates, 0, len(updates))
+
+	for n := range updates {
+		if b.conf.IsModuleAllowed(updates[n].Module) {
+			filteredUpdates = append(filteredUpdates, updates[n])
+		}
+	}
+
+	if len(filteredUpdates) == 0 {
+		log.Printf("repo '%s': has no updates, skipping", repo.Name)
+
+		return nil, nil
+	}
+
+	log.Printf("repo '%s': has %d dependencies that can be updated, updating", repo.Name, len(filteredUpdates))
+
+	for n := range filteredUpdates {
+		log.Printf("repo '%s': updating dependency %s from %s to %s", repo.Name, filteredUpdates[n].Module, filteredUpdates[n].OldVersion, filteredUpdates[n].NewVersion)
+
+		err := updateGoModule(repo.ClonePath(), filteredUpdates[n].Module, *filteredUpdates[n].NewVersion)
+		if err != nil {
+			return nil, fmt.Errorf("repo '%s': update failed for dependency %s, skipping: %s", repo.Name, filteredUpdates[n].Module, err)
+		}
+	}
+
+	err = runGoModTidy(repo.ClonePath())
+	if err != nil {
+		return nil, fmt.Errorf("repo '%s': go mod tidy failed, skipping: %s", repo.Name, err)
+	}
+
+	log.Printf("repo '%s': go.mod was bumped", repo.Name)
+
+	return filteredUpdates, nil
 }
 
 func fileExists(filename string) bool {

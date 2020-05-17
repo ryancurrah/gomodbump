@@ -107,99 +107,55 @@ func (b *BitbucketServer) GetRepositories(vcsType repository.VCS) (repository.Re
 	return repos, nil
 }
 
-// MergePullRequest merges all existing pull requests that can be merged
-func (b *BitbucketServer) MergePullRequest(workers int, repos repository.Repositories) {
-	reposToMerge := make(chan *repository.Repository, len(repos))
-	done := make(chan bool, len(repos))
-
-	for worker := 1; worker <= workers; worker++ {
-		go b.mergePullRequest(reposToMerge, done)
-	}
-
-	for n := range repos {
-		reposToMerge <- repos[n]
-	}
-
-	close(reposToMerge)
-
-	for range repos {
-		<-done
-	}
-}
-
 // CreatePullRequest against the repos provided using the strategy provided
-func (b *BitbucketServer) CreatePullRequest(workers int, repos repository.Repositories) {
-	reposToPR := make(chan *repository.Repository, len(repos))
-	done := make(chan bool, len(repos))
-
-	for worker := 1; worker <= workers; worker++ {
-		go b.createPullRequest(reposToPR, done)
-	}
-
-	for n := range repos {
-		reposToPR <- repos[n]
-	}
-
-	close(reposToPR)
-
-	for range repos {
-		<-done
-	}
+func (b *BitbucketServer) CreatePullRequest(repo *repository.Repository) (int, error) {
+	return b.createPullRequest(repo)
 }
 
-func (b *BitbucketServer) createPullRequest(repos <-chan *repository.Repository, done chan<- bool) {
-	for repo := range repos {
-		if repo.VCS != repository.Git {
-			log.Print(vcsNotSupportedMsg(repo.VCS))
-		}
+// MergePullRequest merges all existing pull requests that can be merged
+func (b *BitbucketServer) MergePullRequest(repo *repository.Repository) error {
+	return b.mergePullRequest(repo)
+}
 
-		log.Printf("creating pull request for repo %s and sleeping for %v", repo.Name, b.pullRequest.Delay)
+func (b *BitbucketServer) createPullRequest(repo *repository.Repository) (int, error) {
+	if repo.VCS != repository.Git {
+		log.Print(vcsNotSupportedMsg(repo.VCS))
 
-		response, err := b.client.DefaultApi.CreatePullRequest(b.conf.ProjectKey, repo.Name, bitbucketv1.PullRequest{
-			Title:       b.pullRequest.Title,
-			Description: b.pullRequest.Description,
-			FromRef: bitbucketv1.PullRequestRef{
-				ID: fmt.Sprintf("refs/heads/%s", repo.SourceBranch),
-				Repository: bitbucketv1.Repository{
-					Slug: repo.Name,
-					Project: &bitbucketv1.Project{
-						Key: b.conf.ProjectKey,
-					},
-				},
-			},
-			ToRef: bitbucketv1.PullRequestRef{
-				ID: fmt.Sprintf("refs/heads/%s", repo.TargetBranch),
-				Repository: bitbucketv1.Repository{
-					Slug: repo.Name,
-					Project: &bitbucketv1.Project{
-						Key: b.conf.ProjectKey,
-					},
-				},
-			},
-		})
-		if err != nil {
-			log.Printf("unable to create pull request for repo '%s': %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		pullRequest, err := bitbucketv1.GetPullRequestResponse(response)
-		if err != nil {
-			log.Printf("unable to create pull request for repo '%s': %s", repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		repo.SetPullRequest(int64(pullRequest.ID))
-
-		b.pullRequest.Sleep()
-
-		done <- true
+		return 0, nil
 	}
+
+	response, err := b.client.DefaultApi.CreatePullRequest(b.conf.ProjectKey, repo.Name, bitbucketv1.PullRequest{
+		Title:       b.pullRequest.Title,
+		Description: b.pullRequest.Description,
+		FromRef: bitbucketv1.PullRequestRef{
+			ID: fmt.Sprintf("refs/heads/%s", repo.SourceBranch),
+			Repository: bitbucketv1.Repository{
+				Slug: repo.Name,
+				Project: &bitbucketv1.Project{
+					Key: b.conf.ProjectKey,
+				},
+			},
+		},
+		ToRef: bitbucketv1.PullRequestRef{
+			ID: fmt.Sprintf("refs/heads/%s", repo.TargetBranch),
+			Repository: bitbucketv1.Repository{
+				Slug: repo.Name,
+				Project: &bitbucketv1.Project{
+					Key: b.conf.ProjectKey,
+				},
+			},
+		},
+	})
+	if err != nil {
+		return 0, fmt.Errorf("repo '%s': unable to create pull request: %s", repo.Name, err)
+	}
+
+	pullRequest, err := bitbucketv1.GetPullRequestResponse(response)
+	if err != nil {
+		return 0, fmt.Errorf("repo '%s': unable to create pull request: %s", repo.Name, err)
+	}
+
+	return pullRequest.ID, nil
 }
 
 func getBitbucketServerCloneURL(cloneType string, cloneLinks []bitbucketv1.CloneLink) string {
@@ -212,85 +168,50 @@ func getBitbucketServerCloneURL(cloneType string, cloneLinks []bitbucketv1.Clone
 	return ""
 }
 
-func (b *BitbucketServer) mergePullRequest(repos <-chan *repository.Repository, done chan<- bool) {
-	for repo := range repos {
-		response, err := b.client.DefaultApi.GetPullRequest(repo.Parent, repo.Name, int(repo.PullRequestID))
-		if err != nil {
-			log.Printf("unable to merge pull request #%d for repo '%s': %s", repo.PullRequestID, repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		pullRequest, err := bitbucketv1.GetPullRequestResponse(response)
-		if err != nil {
-			log.Printf("unable to merge pull request #%d for repo '%s': %s", repo.PullRequestID, repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		if !pullRequest.Open {
-			repo.ResetState()
-
-			done <- true
-
-			continue
-		}
-
-		response, err = b.client.DefaultApi.CanMerge(repo.Parent, repo.Name, repo.PullRequestID)
-		if err != nil {
-			log.Printf("unable to get pull request #%d 'can merge' status for repo '%s': %s", repo.PullRequestID, repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		var merge bitbucketv1.MergeGetResponse
-
-		err = mapstructure.Decode(response.Values, &merge)
-
-		if err != nil {
-			log.Printf("unable to get pull request #%d 'can merge' status for repo '%s': %s", repo.PullRequestID, repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		if !merge.CanMerge {
-			log.Printf("unable to merge pull request #%d for repo '%s': %+v", repo.PullRequestID, repo.Name, merge.Vetoes)
-
-			done <- true
-
-			continue
-		}
-
-		mergeMap := make(map[string]interface{})
-		mergeMap["version"] = pullRequest.Version
-
-		_, err = b.client.DefaultApi.Merge(repo.Parent, repo.Name, int(repo.PullRequestID), mergeMap, nil, []string{"application/json"})
-		if err != nil {
-			log.Printf("unable to merge pull request #%d for repo '%s': %s", repo.PullRequestID, repo.Name, err)
-
-			done <- true
-
-			continue
-		}
-
-		log.Printf("merged pull request for repo %s and sleeping for %v", repo.Name, b.pullRequest.Delay)
-
-		repo.ResetState()
-
-		b.pullRequest.Sleep()
-
-		done <- true
+func (b *BitbucketServer) mergePullRequest(repo *repository.Repository) error {
+	response, err := b.client.DefaultApi.GetPullRequest(repo.Parent, repo.Name, int(repo.PullRequestID))
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to merge pull request #%d: %s", repo.Name, repo.PullRequestID, err)
 	}
+
+	pullRequest, err := bitbucketv1.GetPullRequestResponse(response)
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to merge pull request #%d: %s", repo.Name, repo.PullRequestID, err)
+	}
+
+	if !pullRequest.Open {
+		return nil
+	}
+
+	response, err = b.client.DefaultApi.CanMerge(repo.Parent, repo.Name, repo.PullRequestID)
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to get pull request #%d 'can merge' status: %s", repo.Name, repo.PullRequestID, err)
+	}
+
+	var merge bitbucketv1.MergeGetResponse
+
+	err = mapstructure.Decode(response.Values, &merge)
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to get pull request #%d 'can merge' status: %s", repo.Name, repo.PullRequestID, err)
+	}
+
+	if !merge.CanMerge {
+		log.Printf("repo '%s': unable to merge pull request #%d: %+v", repo.Name, repo.PullRequestID, merge.Vetoes)
+
+		return nil
+	}
+
+	mergeMap := make(map[string]interface{})
+	mergeMap["version"] = pullRequest.Version
+
+	_, err = b.client.DefaultApi.Merge(repo.Parent, repo.Name, int(repo.PullRequestID), mergeMap, nil, []string{"application/json"})
+	if err != nil {
+		return fmt.Errorf("repo '%s': unable to merge pull request #%d: %s", repo.Name, repo.PullRequestID, err)
+	}
+
+	return nil
 }
 
 func vcsNotSupportedMsg(vcs repository.VCS) string {
-	return fmt.Sprintf("scm '%s' does not support vcs type '%s': The following vcs types are supported [%s]", repository.BitbucketServer, vcs, repository.Git)
+	return fmt.Sprintf("scm '%s' does not support vcs type '%s': the following vcs types are supported [%s]", repository.BitbucketServer, vcs, repository.Git)
 }

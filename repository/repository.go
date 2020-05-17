@@ -76,6 +76,36 @@ func (r *Repository) ClonePath() string {
 	return filepath.Join(r.BaseDir, string(r.SCM), r.Parent, r.Name)
 }
 
+// IsMergeable returns true if a PR exists.
+func (r *Repository) IsMergeable(scm SCM) bool {
+	return r.SCM == scm && r.PullRequestOpened && r.PullRequestID != 0
+}
+
+// IsCloneable returns true if the repo VCS matches and does not already have a PR open.
+func (r *Repository) IsCloneable(vcs VCS) bool {
+	return r.VCS == vcs
+}
+
+// IsBumpable returns true if the repo does not have PR open and is cloned.
+func (r *Repository) IsBumpable() bool {
+	return !r.PullRequestOpened && !r.Bumped && r.Cloned
+}
+
+// IsPushable returns true if the repo does not have PR open and had a dependency updated.
+func (r *Repository) IsPushable(vcs VCS) bool {
+	return r.VCS == vcs && !r.PullRequestOpened && !r.Pushed && r.Bumped
+}
+
+// IsPRable returns true if the repo pushed a commit.
+func (r *Repository) IsPRable(scm SCM) bool {
+	return r.SCM == scm && !r.PullRequestOpened && r.Pushed
+}
+
+// IsSavable returns true if a PR is open.
+func (r *Repository) IsSavable() bool {
+	return r.PullRequestOpened && r.PullRequestID != 0
+}
+
 // ResetState resets the repository state to default
 func (r *Repository) ResetState() {
 	r.Cloned = false
@@ -88,7 +118,7 @@ func (r *Repository) ResetState() {
 	r.PullRequestID = 0
 }
 
-// NewRepository returns an intitialized repository
+// NewRepository returns an initialized repository
 func NewRepository(name, url, parent string, scm SCM, vcs VCS) *Repository {
 	return &Repository{
 		Name:   name,
@@ -102,77 +132,12 @@ func NewRepository(name, url, parent string, scm SCM, vcs VCS) *Repository {
 // Repositories a list of VCS repositories
 type Repositories []*Repository
 
-// GetMergeable repositories, repositories where a PR was created
-func (r Repositories) GetMergeable(scm SCM) Repositories {
-	mergeableRepos := make(Repositories, 0, len(r))
-
-	for n := range r {
-		if r[n].SCM == scm && r[n].PullRequestOpened && r[n].PullRequestID != 0 {
-			mergeableRepos = append(mergeableRepos, r[n])
-		}
-	}
-
-	return mergeableRepos
-}
-
-// GetCloneable repositories
-func (r Repositories) GetCloneable(vcs VCS) Repositories {
-	cloneableRepos := make(Repositories, 0, len(r))
-
-	for n := range r {
-		if r[n].VCS == vcs && !r[n].PullRequestOpened && !r[n].Cloned {
-			cloneableRepos = append(cloneableRepos, r[n])
-		}
-	}
-
-	return cloneableRepos
-}
-
-// GetBumpable repositories
-func (r Repositories) GetBumpable() Repositories {
-	bumpableRepos := make(Repositories, 0, len(r))
-
-	for n := range r {
-		if !r[n].PullRequestOpened && !r[n].Bumped && r[n].Cloned {
-			bumpableRepos = append(bumpableRepos, r[n])
-		}
-	}
-
-	return bumpableRepos
-}
-
-// GetPushable repositories
-func (r Repositories) GetPushable(vcs VCS) Repositories {
-	pushableRepos := make(Repositories, 0, len(r))
-
-	for n := range r {
-		if r[n].VCS == vcs && !r[n].PullRequestOpened && !r[n].Pushed && r[n].Bumped {
-			pushableRepos = append(pushableRepos, r[n])
-		}
-	}
-
-	return pushableRepos
-}
-
-// GetPRable repositories
-func (r Repositories) GetPRable(scm SCM) Repositories {
-	prAbleRepos := make(Repositories, 0, len(r))
-
-	for n := range r {
-		if r[n].SCM == scm && !r[n].PullRequestOpened && r[n].Pushed {
-			prAbleRepos = append(prAbleRepos, r[n])
-		}
-	}
-
-	return prAbleRepos
-}
-
 // GetSavable repositories, repositories where a PR was created
 func (r Repositories) GetSavable() Repositories {
 	savableRepos := make(Repositories, 0, len(r))
 
 	for n := range r {
-		if r[n].PullRequestOpened && r[n].PullRequestID != 0 {
+		if r[n].IsSavable() {
 			savableRepos = append(savableRepos, r[n])
 		}
 	}

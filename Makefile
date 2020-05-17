@@ -13,6 +13,14 @@ lint:
 build:
 	go build -o gomodbump cmd/gomodbump/main.go
 
+.PHONEY: test
+test:
+	go test -v -coverprofile coverage.out 
+
+.PHONEY: cover
+cover:
+	gocover-cobertura < coverage.out > coverage.xml
+
 .PHONEY: dockerbuild
 dockerbuild:
 	docker build --build-arg GOMODBUMP_VERSION=${version} --tag ryancurrah/gomodbump:${version} .
@@ -48,3 +56,7 @@ clean:
 install-tools-mac:
 	pip3 install bumpversion
 	brew install goreleaser/tap/goreleaser
+
+.PHONEY: install-go-tools
+install-go-tools:
+	go get github.com/t-yuki/gocover-cobertura

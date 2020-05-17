@@ -1,4 +1,10 @@
 # gomodbump
+[![License](https://img.shields.io/github/license/ryancurrah/gomodbump?style=flat-square)](/LICENSE)
+[![Codecov](https://img.shields.io/codecov/c/gh/ryancurrah/gomodbump?style=flat-square)](https://codecov.io/gh/ryancurrah/gomodbump)
+[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ryancurrah/gomodbump/Go?logo=Go&style=flat-square)](https://github.com/ryancurrah/gomodbump/actions?query=workflow%3AGo)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/ryancurrah/gomodbump?style=flat-square)](https://github.com/ryancurrah/gomodbump/releases/latest)
+[![Docker](https://img.shields.io/docker/pulls/ryancurrah/gomodbump?style=flat-square)](https://hub.docker.com/r/ryancurrah/gomodbump)
+[![Github Releases Stats of golangci-lint](https://img.shields.io/github/downloads/ryancurrah/gomodbump/total.svg?logo=github&style=flat-square)](https://somsubhra.com/github-release-stats/?username=ryancurrah&repository=gomodbump)
 
 <img src="https://storage.googleapis.com/gopherizeme.appspot.com/gophers/68a9f253a5c70bd1fb39e8ac9c07cb2c434f5952.png" width="30%">
 
@@ -12,11 +18,23 @@ Go module bump will ensure your Go module repositories are using the latest depe
 
 ## How It Works
 
+---
+
+**NOTE**
+
+If you are using the `GOPRIVATE` environment variable and you need to authenticate to your private module repository you will have to configure git globally to handle auth for you using a git credential helper or SSH agent. 
+
+Unfortunately `go list` fails silently when it cannot authenticate or reach your go module registry so we are not able check if it failed. 
+
+You will however notice that there are no updates for modules from the `GOPRIVATE` registry that clearly have updates. If this is the case please ensure `go get` from your private registry works in the environment your running `gomodbump` on. 
+
+---
+
 Schedule `gomodbump` to run every `X` amount time in your favorite scheduler.
 
 1. Gets repositories from storage (If the file exists)
 2. Gets repositories from the SCM server
-3. Merges any existing pull requests for a repository that is mergeable
+3. Merges any existing pull requests for a repository that is mergeable and deletes the branch
 4. If `stateful` or `auto_merge` is `true` and a pull request is already open for the repository it will not be processed any further
 5. Clones repositories to local disk
 6. If a repository is not a Go module it will not be processed any further
@@ -62,16 +80,16 @@ Storage is used to save the repository state, it contains the pull request infor
 ```yaml
 general:
   cleanup: true                                    # Enabling this will prevent the work_dir from being cleaned up after running
-  workers: 5                                       # Number of concurrent Go routines to process the repositories with
+  workers: 2                                       # Number of concurrent Go routines to process the repositories with
   work_dir: repos/                                 # Directory to clone the repositories to
   stateful: true                                   # Ensures you do not create more than 1 pull request for each repo. Requires storage to be configured
   clone_type: http                                 # http or ssh
+  delay: 10s                                       # Delay in seconds or minutes or hours after merging a pull request, creating a pull request and pushing to the remote in order to not overwhelm your CI
 
 scm:
   pull_request:
     title: Updating go.mod dependencies
     description: Updating go.mod dependencies
-    delay: 10s                                     # Delay in seconds or minutes or hours after creating a pull request in order to not overwhelm your CI
     auto_merge: true                               # Will automatically merge the pull request if it is mergeable. This enables stateful
 
   bitbucket_server:
@@ -97,7 +115,6 @@ vcs:
     commit_message: Updating go.mod dependencies
     commit_author_name: FirstName LastName
     commit_author_email: admin@admin.com
-    delay: 10s                                     # Delay in seconds or minutes or hours after pushing to the remote in order to not overwhelm your CI
 
 bump:
   go_mod_tidy: true                                # Will run `go mod tidy` if set to true after updating a repository
@@ -150,10 +167,6 @@ docker run \
 ```
 go get -u github.com/ryancurrah/gomodbump/cmd/gomodbump
 ```
-
-## Go proxy caveats
-
-The `go list` command is used to determine if the module has an update. If the Go proxy environment variable is set and the proxy is not reachable it will silently fail. So ensure your proxy works manually. Any suggestions on solving this issue would be greatly appreciated.
 
 ## License
 
